@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#0b1020" />
+  <meta name="description" content="Offline compound interest calculator — installable PWA." />
+
+  <title>Compound Interest Calculator</title>
+
+  <link rel="manifest" href="manifest.json" />
+  <link rel="icon" type="image/svg+xml" href="icon.svg" />
+  <link rel="apple-touch-icon" href="icon-180.png" />
+
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Compound" />
+  <meta name="mobile-web-app-capable" content="yes" />
+
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <main class="app">
+    <header class="app__header">
+      <h1>Compound Interest</h1>
+      <p class="app__sub">See how your money grows.</p>
+    </header>
+
+    <section class="card balance" aria-live="polite">
+      <p class="balance__label">Final balance</p>
+      <p class="balance__value" id="finalBalance">$0</p>
+      <p class="balance__meta">
+        <span><span class="dot dot--principal"></span> Principal <strong id="metaPrincipal">$0</strong></span>
+        <span><span class="dot dot--contrib"></span> Contributions <strong id="metaContrib">$0</strong></span>
+        <span><span class="dot dot--interest"></span> Interest <strong id="metaInterest">$0</strong></span>
+      </p>
+    </section>
+
+    <section class="card chart-card">
+      <div class="chart-card__head">
+        <h2>Year-by-year growth</h2>
+        <span class="chart-card__hint" id="chartHint">Tap a bar</span>
+      </div>
+      <div class="chart-wrap">
+        <svg id="chart" class="chart" role="img" aria-label="Year-by-year balance chart"></svg>
+      </div>
+      <ul class="legend">
+        <li><span class="dot dot--principal"></span>Principal</li>
+        <li><span class="dot dot--contrib"></span>Contributions</li>
+        <li><span class="dot dot--interest"></span>Interest</li>
+      </ul>
+    </section>
+
+    <section class="card form" aria-label="Calculator inputs">
+      <div class="field">
+        <label for="principal">Initial principal</label>
+        <div class="input-prefix">
+          <span>$</span>
+          <input id="principal" type="text" inputmode="decimal" autocomplete="off" value="10,000" />
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="monthly">Monthly contribution</label>
+        <div class="input-prefix">
+          <span>$</span>
+          <input id="monthly" type="text" inputmode="decimal" autocomplete="off" value="500" />
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="rate">Annual interest rate</label>
+        <div class="input-suffix">
+          <input id="rate" type="text" inputmode="decimal" autocomplete="off" value="7" />
+          <span>%</span>
+        </div>
+      </div>
+
+      <div class="field">
+        <label>Compounding frequency</label>
+        <div class="seg" role="radiogroup" aria-label="Compounding frequency">
+          <button type="button" role="radio" aria-checked="true" data-value="12" class="seg__btn is-active">Monthly</button>
+          <button type="button" role="radio" aria-checked="false" data-value="4" class="seg__btn">Quarterly</button>
+          <button type="button" role="radio" aria-checked="false" data-value="1" class="seg__btn">Annually</button>
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="years">
+          Time period
+          <span class="years-out"><strong id="yearsOut">20</strong> years</span>
+        </label>
+        <input id="years" type="range" min="1" max="40" step="1" value="20" />
+        <div class="range-ticks" aria-hidden="true">
+          <span>1</span><span>10</span><span>20</span><span>30</span><span>40</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="card breakdown">
+      <h2>Breakdown</h2>
+      <div class="bar-row" aria-hidden="true">
+        <div class="bar bar--principal" id="barPrincipal"></div>
+        <div class="bar bar--contrib" id="barContrib"></div>
+        <div class="bar bar--interest" id="barInterest"></div>
+      </div>
+      <ul class="breakdown__list">
+        <li>
+          <span><span class="dot dot--principal"></span>Principal</span>
+          <strong id="bdPrincipal">$0</strong>
+        </li>
+        <li>
+          <span><span class="dot dot--contrib"></span>Total contributions</span>
+          <strong id="bdContrib">$0</strong>
+        </li>
+        <li>
+          <span><span class="dot dot--interest"></span>Total interest</span>
+          <strong id="bdInterest">$0</strong>
+        </li>
+        <li class="breakdown__total">
+          <span>Final balance</span>
+          <strong id="bdTotal">$0</strong>
+        </li>
+      </ul>
+    </section>
+
+    <section class="card comparison" aria-label="Contribution comparison">
+      <div class="comparison__head">
+        <h2>Contribution comparison</h2>
+        <span class="comparison__hint">Same principal, rate &amp; time — varying monthly</span>
+      </div>
+      <div class="comparison__chart" id="cmpChart" role="list"></div>
+      <div class="comparison__table-wrap">
+        <table class="comparison__table" id="cmpTable">
+          <thead>
+            <tr>
+              <th scope="col">Monthly</th>
+              <th scope="col">Total contributed</th>
+              <th scope="col">Total interest</th>
+              <th scope="col">Final balance</th>
+            </tr>
+          </thead>
+          <tbody id="cmpTableBody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <footer class="app__footer">
+      <p>Works offline. Install to your home screen.</p>
+      <p class="app__footer-meta" id="installState">Checking install status…</p>
+    </footer>
+  </main>
+
+  <div class="tooltip" id="tooltip" role="status" aria-live="polite" hidden></div>
+
+  <script src="app.js" defer></script>
+</body>
+</html>
