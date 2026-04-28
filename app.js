@@ -32,12 +32,32 @@
     cmpChart: $('cmpChart'),
     cmpTableBody: $('cmpTableBody'),
 
+    modeBtns: document.querySelectorAll('[data-mode-btn]'),
+    tlFinalBalance: $('tlFinalBalance'),
+    tlMetaInvested: $('tlMetaInvested'),
+    tlMetaInterest: $('tlMetaInterest'),
+    tlMetaWithdrawn: $('tlMetaWithdrawn'),
+    tlYears: $('tlYears'),
+    tlBar: $('tlBar'),
+    tlBarAxis: $('tlBarAxis'),
+    tlChart: $('tlChart'),
+    phasesList: $('phasesList'),
+    addPhaseBtn: $('addPhase'),
+    tlTotalInvested: $('tlTotalInvested'),
+    tlTotalWithdrawn: $('tlTotalWithdrawn'),
+    tlTotalInterest: $('tlTotalInterest'),
+    tlTotalBalance: $('tlTotalBalance'),
+
     installState: $('installState'),
   };
 
   const TIERS = [1000, 2000, 3000, 4000, 5000, 6000, 7000];
 
+  let phaseIdCounter = 0;
+  const newPhaseId = () => ++phaseIdCounter;
+
   const state = {
+    mode: 'simple',
     principal: 10000,
     monthly: 500,
     rate: 7,
@@ -45,7 +65,15 @@
     freq: 12,
     series: [],
     activeYear: null,
+    phases: [
+      { id: newPhaseId(), label: 'Accumulation', type: 'contribute', years: 25, amount: 1000 },
+      { id: newPhaseId(), label: 'Retirement',   type: 'withdraw',   years: 20, amount: 4000 },
+    ],
   };
+
+  const PHASE_TYPES = ['contribute', 'coast', 'withdraw'];
+  const PHASE_LABEL = { contribute: 'Contribute', coast: 'Coast', withdraw: 'Withdraw' };
+  const PHASE_COLOR = { contribute: '#8cf0c4', coast: '#6ea8ff', withdraw: '#ffb86b' };
 
   // ---- Formatting helpers ----
   const fmtCurrency = (n) => {
@@ -303,6 +331,425 @@
     els.cmpTableBody.innerHTML = tbody;
   }
 
+  // ---- Timeline mode simulation ----
+  function simulateTimeline(startBalance, phases, annualRate, freq) {
+    const r = annualRate / 100;
+    const monthsPerCompound = Math.max(1, Math.round(12 / freq));
+    const ratePerCompound = r / freq;
+
+    let balance = startBalance;
+    let totalContrib = 0;
+    let totalWithdraw = 0;
+    let totalInterest = 0;
+    let cumulMonth = 0;
+
+    const phaseResults = [];
+    const series = [{ year: 0, balance, contribCum: 0, withdrawCum: 0, interestCum: 0, phaseIndex: -1 }];
+    const phaseBoundaries = [{ year: 0, phaseIndex: -1 }];
+
+    phases.forEach((phase, pIdx) => {
+      const years = Math.max(0, Math.min(120, phase.years || 0));
+      const months = Math.round(years * 12);
+      const amount = Math.max(0, phase.amount || 0);
+      const startBal = balance;
+      let phaseContrib = 0;
+      let phaseWithdraw = 0;
+      let phaseInterest = 0;
+
+      for (let m = 1; m <= months; m++) {
+        cumulMonth++;
+        if (phase.type === 'contribute' && amount > 0) {
+          balance += amount;
+          phaseContrib += amount;
+          totalContrib += amount;
+        } else if (phase.type === 'withdraw' && amount > 0) {
+          const w = Math.min(amount, Math.max(0, balance));
+          balance -= w;
+          phaseWithdraw += w;
+          totalWithdraw += w;
+        }
+        if (cumulMonth % monthsPerCompound === 0 && balance > 0) {
+          const interest = balance * ratePerCompound;
+          balance += interest;
+          phaseInterest += interest;
+          totalInterest += interest;
+        }
+        if (cumulMonth % 12 === 0) {
+          series.push({
+            year: cumulMonth / 12,
+            balance,
+            contribCum: totalContrib,
+            withdrawCum: totalWithdraw,
+            interestCum: totalInterest,
+            phaseIndex: pIdx,
+          });
+        }
+      }
+
+      // Always record an end-of-phase boundary point even if duration isn't whole years
+      const endYear = cumulMonth / 12;
+      phaseBoundaries.push({ year: endYear, phaseIndex: pIdx });
+      const last = series[series.length - 1];
+      if (!last || Math.abs(last.year - endYear) > 1e-6) {
+        series.push({
+          year: endYear,
+          balance,
+          contribCum: totalContrib,
+          withdrawCum: totalWithdraw,
+          interestCum: totalInterest,
+          phaseIndex: pIdx,
+        });
+      }
+
+      phaseResults.push({
+        ...phase,
+        startBalance: startBal,
+        endBalance: balance,
+        contrib: phaseContrib,
+        withdraw: phaseWithdraw,
+        interest: phaseInterest,
+        startYear: phaseBoundaries[phaseBoundaries.length - 2].year,
+        endYear,
+      });
+    });
+
+    return {
+      finalBalance: balance,
+      totalContrib,
+      totalWithdraw,
+      totalInterest,
+      phaseResults,
+      series,
+      phaseBoundaries,
+      totalYears: cumulMonth / 12,
+    };
+  }
+
+  // ---- Timeline bar (above the area chart) ----
+  function renderTimelineBar(result) {
+    const total = Math.max(0.0001, result.totalYears);
+    let bar = '';
+    result.phaseResults.forEach((p, i) => {
+      const dur = Math.max(0, p.endYear - p.startYear);
+      const pct = (dur / total) * 100;
+      if (pct <= 0) return;
+      const tip = `${PHASE_LABEL[p.type]}${p.label ? ' — ' + p.label : ''} (${formatYearLen(dur)})`;
+      bar += `<div class="tl-seg tl-seg--${p.type}" style="width:${pct.toFixed(3)}%" title="${escapeHtml(tip)}">${pct >= 8 ? escapeHtml(p.label || PHASE_LABEL[p.type]) : ''}</div>`;
+    });
+    if (!bar) {
+      bar = '<div class="tl-seg" style="width:100%; background: var(--card-2); color: var(--muted);">No phases</div>';
+    }
+    els.tlBar.innerHTML = bar;
+
+    // Axis ticks: 0, ~5 internal, totalYears
+    let axis = '';
+    const ticks = chooseTicks(0, total);
+    ticks.forEach((t) => {
+      const pct = total > 0 ? (t / total) * 100 : 0;
+      axis += `<span style="left:${pct.toFixed(2)}%">${formatYearTick(t)}</span>`;
+    });
+    els.tlBarAxis.innerHTML = axis;
+    els.tlYears.textContent = formatYearLen(total) || '0 years';
+  }
+
+  function chooseTicks(min, max) {
+    const span = max - min;
+    if (span <= 0) return [0];
+    const steps = [1, 2, 5, 10, 20, 25, 50];
+    let step = 1;
+    for (const s of steps) {
+      if (span / s <= 8) { step = s; break; }
+      step = s;
+    }
+    const out = [];
+    for (let v = 0; v <= max + 1e-6; v += step) out.push(v);
+    if (out[out.length - 1] !== max) out.push(max);
+    return out;
+  }
+
+  function formatYearLen(y) {
+    if (!isFinite(y) || y <= 0) return '0 years';
+    if (Math.abs(y - Math.round(y)) < 0.01) return Math.round(y) + ' year' + (Math.round(y) === 1 ? '' : 's');
+    return y.toFixed(1) + ' years';
+  }
+  function formatYearTick(y) {
+    if (Math.abs(y - Math.round(y)) < 0.01) return Math.round(y) + 'y';
+    return y.toFixed(1) + 'y';
+  }
+
+  // ---- Timeline area chart ----
+  function renderTimelineChart(result) {
+    const svg = els.tlChart;
+    const W = svg.clientWidth || 360;
+    const H = 220;
+    const padL = 44, padR = 10, padT = 10, padB = 24;
+    const innerW = W - padL - padR;
+    const innerH = H - padT - padB;
+    svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+    svg.setAttribute('preserveAspectRatio', 'none');
+
+    const series = result.series;
+    if (series.length < 2 || result.totalYears <= 0) {
+      svg.innerHTML = `<text x="${W/2}" y="${H/2}" text-anchor="middle" fill="var(--muted)" font-size="13">Add a phase to see the chart</text>`;
+      return;
+    }
+
+    const maxBal = Math.max(1, ...series.map((s) => s.balance));
+    const niceMax = niceCeil(maxBal);
+    const xOf = (year) => padL + (year / result.totalYears) * innerW;
+    const yOf = (val)  => padT + innerH - (val / niceMax) * innerH;
+
+    // Phase background bands
+    let bands = '';
+    result.phaseResults.forEach((p) => {
+      const x1 = xOf(p.startYear);
+      const x2 = xOf(p.endYear);
+      const w = Math.max(0, x2 - x1);
+      bands += `<rect class="tl-phase-band" x="${x1}" y="${padT}" width="${w}" height="${innerH}" fill="${PHASE_COLOR[p.type]}"/>`;
+    });
+
+    // Y-axis grid + labels
+    const ticksY = 4;
+    let yAxis = '';
+    for (let i = 0; i <= ticksY; i++) {
+      const v = (niceMax * i) / ticksY;
+      const y = padT + innerH - (v / niceMax) * innerH;
+      yAxis += `<line x1="${padL}" y1="${y}" x2="${W - padR}" y2="${y}" stroke="currentColor" stroke-opacity="0.08"/>`;
+      yAxis += `<text x="${padL - 6}" y="${y + 3}" text-anchor="end">${fmtCurrencyShort(v)}</text>`;
+    }
+
+    // X-axis labels at phase boundaries
+    let xAxis = '';
+    const boundaryYears = [0, ...result.phaseResults.map((p) => p.endYear)];
+    boundaryYears.forEach((y, i) => {
+      if (i > 0 && i < boundaryYears.length) {
+        const x = xOf(y);
+        xAxis += `<line class="tl-phase-divider" x1="${x}" y1="${padT}" x2="${x}" y2="${padT + innerH}"/>`;
+      }
+      xAxis += `<text class="tl-phase-label" x="${xOf(y)}" y="${H - 6}" text-anchor="${i === 0 ? 'start' : i === boundaryYears.length - 1 ? 'end' : 'middle'}">${formatYearTick(y)}</text>`;
+    });
+
+    // Build the area path: balance over time, with a baseline at zero (clamped to chart area)
+    const baseY = yOf(0);
+    let path = `M ${xOf(series[0].year).toFixed(2)} ${baseY.toFixed(2)} `;
+    series.forEach((s) => {
+      path += `L ${xOf(s.year).toFixed(2)} ${yOf(Math.max(0, s.balance)).toFixed(2)} `;
+    });
+    path += `L ${xOf(series[series.length - 1].year).toFixed(2)} ${baseY.toFixed(2)} Z`;
+
+    // Stroke just the top edge of the area
+    let line = `M ${xOf(series[0].year).toFixed(2)} ${yOf(Math.max(0, series[0].balance)).toFixed(2)} `;
+    series.forEach((s, i) => { if (i > 0) line += `L ${xOf(s.year).toFixed(2)} ${yOf(Math.max(0, s.balance)).toFixed(2)} `; });
+
+    const gradId = 'tl-grad-' + Date.now();
+    svg.innerHTML =
+      `<defs>
+        <linearGradient id="${gradId}" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#8cf0c4" stop-opacity="0.55"/>
+          <stop offset="100%" stop-color="#6ea8ff" stop-opacity="0.05"/>
+        </linearGradient>
+      </defs>` +
+      `<g class="bands">${bands}</g>` +
+      `<g class="axis" color="var(--muted)">${yAxis}</g>` +
+      `<path class="tl-area-fill" d="${path}" fill="url(#${gradId})"/>` +
+      `<path class="tl-area-line" d="${line}"/>` +
+      `<g class="x-axis">${xAxis}</g>`;
+  }
+
+  // ---- Phase cards ----
+  function renderPhases(result) {
+    const phases = state.phases;
+    const items = result.phaseResults;
+    let html = '';
+    phases.forEach((p, i) => {
+      const r = items[i] || { startBalance: 0, endBalance: 0, contrib: 0, withdraw: 0, interest: 0 };
+      const showAmount = p.type !== 'coast';
+      const amountLabel = p.type === 'withdraw' ? 'Monthly withdrawal' : 'Monthly contribution';
+      html +=
+        `<div class="phase phase--${p.type}" data-phase="${p.id}">` +
+          `<div class="phase__head">` +
+            `<span class="phase__num">${i + 1}</span>` +
+            `<div class="phase__type" role="radiogroup" aria-label="Phase type">` +
+              PHASE_TYPES.map((t) =>
+                `<button type="button" role="radio" aria-checked="${t === p.type}" class="phase__type-btn is-${t}${t === p.type ? ' is-active' : ''}" data-set-type="${t}">${PHASE_LABEL[t]}</button>`
+              ).join('') +
+            `</div>` +
+            `<div class="phase__actions">` +
+              `<button type="button" class="phase-icon-btn" data-action="up" aria-label="Move up"${i === 0 ? ' disabled' : ''}>↑</button>` +
+              `<button type="button" class="phase-icon-btn" data-action="down" aria-label="Move down"${i === phases.length - 1 ? ' disabled' : ''}>↓</button>` +
+              `<button type="button" class="phase-icon-btn phase-icon-btn--del" data-action="delete" aria-label="Delete phase"${phases.length <= 1 ? ' disabled' : ''}>×</button>` +
+            `</div>` +
+          `</div>` +
+          `<div class="phase__fields">` +
+            `<div class="phase-field phase-field--full">` +
+              `<label>Label (optional)</label>` +
+              `<div class="input-prefix">` +
+                `<input type="text" data-field="label" maxlength="40" autocomplete="off" placeholder="${PHASE_LABEL[p.type]}" value="${escapeHtml(p.label || '')}" />` +
+              `</div>` +
+            `</div>` +
+            `<div class="phase-field">` +
+              `<label>Years</label>` +
+              `<div class="input-suffix">` +
+                `<input type="text" data-field="years" inputmode="decimal" autocomplete="off" value="${p.years}" />` +
+                `<span>yr</span>` +
+              `</div>` +
+            `</div>` +
+            (showAmount ? (
+              `<div class="phase-field">` +
+                `<label>${amountLabel}</label>` +
+                `<div class="input-prefix">` +
+                  `<span>$</span>` +
+                  `<input type="text" data-field="amount" inputmode="decimal" autocomplete="off" value="${formatThousands(p.amount || 0)}" />` +
+                `</div>` +
+              `</div>`
+            ) : '') +
+          `</div>` +
+          `<div class="phase__summary">` +
+            `<div class="phase__summary-row">` +
+              `<span>Balance</span>` +
+              `<div class="phase__summary-arrow"><em>${fmtCurrency(r.startBalance)}</em> → <strong>${fmtCurrency(r.endBalance)}</strong></div>` +
+            `</div>` +
+            (p.type === 'contribute' ? (
+              `<div class="phase__summary-row"><span>Contributed this phase</span><strong>${fmtCurrency(r.contrib)}</strong></div>`
+            ) : p.type === 'withdraw' ? (
+              `<div class="phase__summary-row"><span>Withdrawn this phase</span><strong>${fmtCurrency(r.withdraw)}</strong></div>`
+            ) : (
+              `<div class="phase__summary-row"><span>Cash flow</span><strong>$0 (coast)</strong></div>`
+            )) +
+            `<div class="phase__summary-row"><span>Interest earned</span><strong>${fmtCurrency(r.interest)}</strong></div>` +
+          `</div>` +
+        `</div>`;
+    });
+    els.phasesList.innerHTML = html;
+  }
+
+  function escapeHtml(s) {
+    return String(s ?? '')
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+
+  // ---- Phase manipulation ----
+  function addPhase() {
+    state.phases.push({
+      id: newPhaseId(),
+      label: '',
+      type: 'contribute',
+      years: 10,
+      amount: 1000,
+    });
+    recalc();
+  }
+  function deletePhase(id) {
+    if (state.phases.length <= 1) return;
+    state.phases = state.phases.filter((p) => p.id !== id);
+    recalc();
+  }
+  function movePhase(id, dir) {
+    const i = state.phases.findIndex((p) => p.id === id);
+    if (i < 0) return;
+    const j = i + dir;
+    if (j < 0 || j >= state.phases.length) return;
+    [state.phases[i], state.phases[j]] = [state.phases[j], state.phases[i]];
+    recalc();
+  }
+  function setPhaseField(id, field, value) {
+    const p = state.phases.find((x) => x.id === id);
+    if (!p) return;
+    if (field === 'label') p.label = value;
+    else if (field === 'years') p.years = Math.max(0, parseNumber(value));
+    else if (field === 'amount') p.amount = Math.max(0, parseNumber(value));
+    recalcTimelineOnly();
+  }
+  function setPhaseType(id, type) {
+    const p = state.phases.find((x) => x.id === id);
+    if (!p || !PHASE_TYPES.includes(type)) return;
+    p.type = type;
+    recalc(); // re-render the phase card so amount field appears/disappears
+  }
+
+  // Re-run timeline math + redraw chart/totals/summaries WITHOUT rebuilding
+  // the whole phase list (preserves input focus while typing).
+  function recalcTimelineOnly() {
+    if (state.mode !== 'timeline') return;
+    readSharedInputs();
+    const result = simulateTimeline(state.principal, state.phases, state.rate, state.freq);
+    updateTimelineOutputs(result);
+    // Update only the per-phase summary numbers without rebuilding inputs
+    state.phases.forEach((p, i) => {
+      const card = els.phasesList.querySelector(`[data-phase="${p.id}"]`);
+      if (!card) return;
+      const r = result.phaseResults[i];
+      const sum = card.querySelector('.phase__summary');
+      if (!sum) return;
+      sum.querySelector('.phase__summary-arrow').innerHTML =
+        `<em>${fmtCurrency(r.startBalance)}</em> → <strong>${fmtCurrency(r.endBalance)}</strong>`;
+      const rows = sum.querySelectorAll('.phase__summary-row strong');
+      // rows: [endBalance (in arrow), contrib/withdraw/coast, interest]
+      // First strong is inside arrow; we already updated. Others:
+      const cashRow = sum.querySelectorAll('.phase__summary-row')[1];
+      const interestRow = sum.querySelectorAll('.phase__summary-row')[2];
+      if (cashRow) {
+        const strong = cashRow.querySelector('strong');
+        if (strong) {
+          if (p.type === 'contribute') strong.textContent = fmtCurrency(r.contrib);
+          else if (p.type === 'withdraw') strong.textContent = fmtCurrency(r.withdraw);
+          else strong.textContent = '$0 (coast)';
+        }
+      }
+      if (interestRow) {
+        const strong = interestRow.querySelector('strong');
+        if (strong) strong.textContent = fmtCurrency(r.interest);
+      }
+    });
+  }
+
+  function updateTimelineOutputs(result) {
+    els.tlFinalBalance.textContent = fmtCurrency(result.finalBalance);
+    els.tlMetaInvested.textContent = fmtCurrency(result.totalContrib + state.principal);
+    els.tlMetaInterest.textContent = fmtCurrency(result.totalInterest);
+    els.tlMetaWithdrawn.textContent = fmtCurrency(result.totalWithdraw);
+
+    els.tlTotalInvested.textContent = fmtCurrency(result.totalContrib + state.principal);
+    els.tlTotalWithdrawn.textContent = fmtCurrency(result.totalWithdraw);
+    els.tlTotalInterest.textContent = fmtCurrency(result.totalInterest);
+    els.tlTotalBalance.textContent = fmtCurrency(result.finalBalance);
+
+    renderTimelineBar(result);
+    renderTimelineChart(result);
+  }
+
+  function readSharedInputs() {
+    state.principal = Math.max(0, parseNumber(els.principal.value));
+    state.rate = Math.max(0, parseNumber(els.rate.value));
+    // freq is updated by segmented click handler
+  }
+
+  function recalcTimeline() {
+    readSharedInputs();
+    const result = simulateTimeline(state.principal, state.phases, state.rate, state.freq);
+    updateTimelineOutputs(result);
+    renderPhases(result);
+  }
+
+  // ---- Mode switching ----
+  function setMode(mode) {
+    if (mode !== 'simple' && mode !== 'timeline') return;
+    state.mode = mode;
+    document.body.setAttribute('data-mode', mode);
+    els.modeBtns.forEach((b) => {
+      const active = b.getAttribute('data-mode-btn') === mode;
+      b.classList.toggle('is-active', active);
+      b.setAttribute('aria-checked', active ? 'true' : 'false');
+    });
+    // Update principal label depending on mode
+    const principalLabel = $('principalLabel');
+    if (principalLabel) {
+      principalLabel.textContent = mode === 'timeline' ? 'Starting balance' : 'Initial principal';
+    }
+    recalc();
+  }
+
   function niceCeil(v) {
     if (v <= 0) return 1;
     const exp = Math.pow(10, Math.floor(Math.log10(v)));
@@ -325,6 +772,10 @@
   }
 
   function recalc() {
+    if (state.mode === 'timeline') {
+      recalcTimeline();
+      return;
+    }
     readInputs();
     const result = simulate(state.principal, state.monthly, state.rate, state.freq, state.years);
     state.series = result.series;
@@ -403,8 +854,81 @@
     });
   });
 
-  window.addEventListener('resize', () => renderChart(state.series));
-  window.addEventListener('orientationchange', () => setTimeout(() => renderChart(state.series), 100));
+  window.addEventListener('resize', () => {
+    if (state.mode === 'simple') renderChart(state.series);
+    else recalcTimeline();
+  });
+  window.addEventListener('orientationchange', () => setTimeout(() => {
+    if (state.mode === 'simple') renderChart(state.series);
+    else recalcTimeline();
+  }, 100));
+
+  // ---- Mode toggle ----
+  els.modeBtns.forEach((btn) => {
+    btn.addEventListener('click', () => setMode(btn.getAttribute('data-mode-btn')));
+  });
+
+  // ---- Add phase ----
+  els.addPhaseBtn.addEventListener('click', addPhase);
+
+  // ---- Phase list event delegation ----
+  els.phasesList.addEventListener('click', (e) => {
+    const card = e.target.closest('[data-phase]');
+    if (!card) return;
+    const id = parseInt(card.getAttribute('data-phase'), 10);
+
+    const typeBtn = e.target.closest('[data-set-type]');
+    if (typeBtn) {
+      setPhaseType(id, typeBtn.getAttribute('data-set-type'));
+      return;
+    }
+    const actionBtn = e.target.closest('[data-action]');
+    if (actionBtn) {
+      const action = actionBtn.getAttribute('data-action');
+      if (action === 'up') movePhase(id, -1);
+      else if (action === 'down') movePhase(id, +1);
+      else if (action === 'delete') deletePhase(id);
+    }
+  });
+
+  els.phasesList.addEventListener('input', (e) => {
+    const card = e.target.closest('[data-phase]');
+    if (!card) return;
+    const id = parseInt(card.getAttribute('data-phase'), 10);
+    const fieldEl = e.target.closest('[data-field]');
+    if (!fieldEl) return;
+    const field = fieldEl.getAttribute('data-field');
+    if (field === 'amount' || field === 'years') {
+      // Format thousands for amount as the user types
+      if (field === 'amount') {
+        const raw = fieldEl.value;
+        const cleaned = raw.replace(/[^\d.]/g, '');
+        const parts = cleaned.split('.');
+        const intPart = parts[0] || '';
+        const decPart = parts.length > 1 ? '.' + parts.slice(1).join('').slice(0, 2) : '';
+        const formatted = (intPart ? parseInt(intPart, 10).toLocaleString('en-US') : '') + decPart;
+        if (formatted !== raw) {
+          const cursorAtEnd = fieldEl.selectionStart === raw.length;
+          fieldEl.value = formatted;
+          if (cursorAtEnd) fieldEl.setSelectionRange(formatted.length, formatted.length);
+        }
+      }
+    }
+    setPhaseField(id, field, fieldEl.value);
+  });
+
+  els.phasesList.addEventListener('blur', (e) => {
+    if (!e.target.matches('[data-field]')) return;
+    // Light cleanup on blur for amount/years
+    const field = e.target.getAttribute('data-field');
+    if (field === 'amount') {
+      const n = parseNumber(e.target.value);
+      e.target.value = formatThousands(n);
+    } else if (field === 'years') {
+      const n = parseNumber(e.target.value);
+      e.target.value = String(n);
+    }
+  }, true);
 
   // ---- Service worker registration ----
   if ('serviceWorker' in navigator) {
