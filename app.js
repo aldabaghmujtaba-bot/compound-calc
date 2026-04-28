@@ -7,14 +7,20 @@
     principal: $('principal'),
     monthly: $('monthly'),
     rate: $('rate'),
+    inflation: $('inflation'),
+    inflationOut: $('inflationOut'),
     years: $('years'),
     yearsOut: $('yearsOut'),
     seg: document.querySelectorAll('.seg__btn'),
 
     finalBalance: $('finalBalance'),
+    realBalance: $('realBalance'),
     metaPrincipal: $('metaPrincipal'),
     metaContrib: $('metaContrib'),
     metaInterest: $('metaInterest'),
+    bdReal: $('bdReal'),
+    tlRealBalance: $('tlRealBalance'),
+    tlTotalReal: $('tlTotalReal'),
 
     chart: $('chart'),
     chartHint: $('chartHint'),
@@ -61,6 +67,7 @@
     principal: 10000,
     monthly: 500,
     rate: 7,
+    inflation: 3,
     years: 20,
     freq: 12,
     series: [],
@@ -99,6 +106,19 @@
     if (!isFinite(n)) return '0';
     return Math.round(n).toLocaleString('en-US');
   };
+
+  // Inflation: convert nominal $ to today's purchasing power.
+  // real = nominal / (1 + inflation%)^years, capped to <= nominal.
+  const realValue = (nominal, inflationPct, years) => {
+    if (!isFinite(nominal)) return 0;
+    const i = Math.max(0, inflationPct || 0);
+    const y = Math.max(0, years || 0);
+    if (i <= 0 || y <= 0) return nominal;
+    const r = nominal / Math.pow(1 + i / 100, y);
+    return Math.min(nominal, r);
+  };
+  const fmtReal = (n) => '~' + fmtCurrency(n);
+  const fmtRealShort = (n) => '~' + fmtCurrencyShort(n);
 
   // ---- Compound interest engine (month-by-month simulation) ----
   function simulate(principal, monthly, annualRate, freq, years) {
@@ -332,7 +352,7 @@
   }
 
   // ---- Timeline mode simulation ----
-  function simulateTimeline(startBalance, phases, annualRate, freq) {
+  function simulateTimeline(startBalance, phases, annualRate, freq, inflationPct) {
     const r = annualRate / 100;
     const monthsPerCompound = Math.max(1, Math.round(12 / freq));
     const ratePerCompound = r / freq;
@@ -344,7 +364,7 @@
     let cumulMonth = 0;
 
     const phaseResults = [];
-    const series = [{ year: 0, balance, contribCum: 0, withdrawCum: 0, interestCum: 0, phaseIndex: -1 }];
+    const series = [{ year: 0, balance, realBalance: balance, contribCum: 0, withdrawCum: 0, interestCum: 0, phaseIndex: -1 }];
     const phaseBoundaries = [{ year: 0, phaseIndex: -1 }];
 
     phases.forEach((phase, pIdx) => {
@@ -375,9 +395,11 @@
           totalInterest += interest;
         }
         if (cumulMonth % 12 === 0) {
+          const y = cumulMonth / 12;
           series.push({
-            year: cumulMonth / 12,
+            year: y,
             balance,
+            realBalance: realValue(balance, inflationPct, y),
             contribCum: totalContrib,
             withdrawCum: totalWithdraw,
             interestCum: totalInterest,
@@ -394,6 +416,7 @@
         series.push({
           year: endYear,
           balance,
+          realBalance: realValue(balance, inflationPct, endYear),
           contribCum: totalContrib,
           withdrawCum: totalWithdraw,
           interestCum: totalInterest,
@@ -405,6 +428,7 @@
         ...phase,
         startBalance: startBal,
         endBalance: balance,
+        realEndBalance: realValue(balance, inflationPct, endYear),
         contrib: phaseContrib,
         withdraw: phaseWithdraw,
         interest: phaseInterest,
@@ -413,15 +437,18 @@
       });
     });
 
+    const totalYears = cumulMonth / 12;
     return {
       finalBalance: balance,
+      finalRealBalance: realValue(balance, inflationPct, totalYears),
       totalContrib,
       totalWithdraw,
       totalInterest,
       phaseResults,
       series,
       phaseBoundaries,
-      totalYears: cumulMonth / 12,
+      totalYears,
+      inflationPct: inflationPct || 0,
     };
   }
 
@@ -537,9 +564,19 @@
     });
     path += `L ${xOf(series[series.length - 1].year).toFixed(2)} ${baseY.toFixed(2)} Z`;
 
-    // Stroke just the top edge of the area
+    // Stroke just the top edge of the nominal area
     let line = `M ${xOf(series[0].year).toFixed(2)} ${yOf(Math.max(0, series[0].balance)).toFixed(2)} `;
     series.forEach((s, i) => { if (i > 0) line += `L ${xOf(s.year).toFixed(2)} ${yOf(Math.max(0, s.balance)).toFixed(2)} `; });
+
+    // Real-balance dashed line (only when inflation > 0; otherwise overlaps nominal)
+    let realLine = '';
+    if ((result.inflationPct || 0) > 0) {
+      let rl = `M ${xOf(series[0].year).toFixed(2)} ${yOf(Math.max(0, series[0].realBalance)).toFixed(2)} `;
+      for (let i = 1; i < series.length; i++) {
+        rl += `L ${xOf(series[i].year).toFixed(2)} ${yOf(Math.max(0, series[i].realBalance)).toFixed(2)} `;
+      }
+      realLine = `<path class="tl-real-line" d="${rl}"/>`;
+    }
 
     const gradId = 'tl-grad-' + Date.now();
     svg.innerHTML =
@@ -553,6 +590,7 @@
       `<g class="axis" color="var(--muted)">${yAxis}</g>` +
       `<path class="tl-area-fill" d="${path}" fill="url(#${gradId})"/>` +
       `<path class="tl-area-line" d="${line}"/>` +
+      realLine +
       `<g class="x-axis">${xAxis}</g>`;
   }
 
@@ -608,6 +646,10 @@
             `<div class="phase__summary-row">` +
               `<span>Balance</span>` +
               `<div class="phase__summary-arrow"><em>${fmtCurrency(r.startBalance)}</em> → <strong>${fmtCurrency(r.endBalance)}</strong></div>` +
+            `</div>` +
+            `<div class="phase__summary-row phase__summary-row--real">` +
+              `<span>Real ending balance</span>` +
+              `<strong data-real="end">${fmtReal(r.realEndBalance != null ? r.realEndBalance : 0)}</strong>` +
             `</div>` +
             (p.type === 'contribute' ? (
               `<div class="phase__summary-row"><span>Contributed this phase</span><strong>${fmtCurrency(r.contrib)}</strong></div>`
@@ -673,7 +715,7 @@
   function recalcTimelineOnly() {
     if (state.mode !== 'timeline') return;
     readSharedInputs();
-    const result = simulateTimeline(state.principal, state.phases, state.rate, state.freq);
+    const result = simulateTimeline(state.principal, state.phases, state.rate, state.freq, state.inflation);
     updateTimelineOutputs(result);
     // Update only the per-phase summary numbers without rebuilding inputs
     state.phases.forEach((p, i) => {
@@ -684,11 +726,12 @@
       if (!sum) return;
       sum.querySelector('.phase__summary-arrow').innerHTML =
         `<em>${fmtCurrency(r.startBalance)}</em> → <strong>${fmtCurrency(r.endBalance)}</strong>`;
-      const rows = sum.querySelectorAll('.phase__summary-row strong');
-      // rows: [endBalance (in arrow), contrib/withdraw/coast, interest]
-      // First strong is inside arrow; we already updated. Others:
-      const cashRow = sum.querySelectorAll('.phase__summary-row')[1];
-      const interestRow = sum.querySelectorAll('.phase__summary-row')[2];
+      const rows = sum.querySelectorAll('.phase__summary-row');
+      // rows: [balance arrow, real ending, contrib/withdraw/coast, interest]
+      const realStrong = sum.querySelector('[data-real="end"]');
+      if (realStrong) realStrong.textContent = fmtReal(r.realEndBalance != null ? r.realEndBalance : 0);
+      const cashRow = rows[2];
+      const interestRow = rows[3];
       if (cashRow) {
         const strong = cashRow.querySelector('strong');
         if (strong) {
@@ -715,6 +758,13 @@
     els.tlTotalInterest.textContent = fmtCurrency(result.totalInterest);
     els.tlTotalBalance.textContent = fmtCurrency(result.finalBalance);
 
+    // Inflation-adjusted final balance
+    const realFinal = result.finalRealBalance != null
+      ? result.finalRealBalance
+      : realValue(result.finalBalance, state.inflation, result.totalYears);
+    els.tlRealBalance.innerHTML = `${fmtReal(realFinal)} <em>in today's purchasing power</em>`;
+    els.tlTotalReal.textContent = fmtReal(realFinal);
+
     renderTimelineBar(result);
     renderTimelineChart(result);
   }
@@ -722,12 +772,13 @@
   function readSharedInputs() {
     state.principal = Math.max(0, parseNumber(els.principal.value));
     state.rate = Math.max(0, parseNumber(els.rate.value));
+    state.inflation = Math.min(10, Math.max(0, parseFloat(els.inflation.value) || 0));
     // freq is updated by segmented click handler
   }
 
   function recalcTimeline() {
     readSharedInputs();
-    const result = simulateTimeline(state.principal, state.phases, state.rate, state.freq);
+    const result = simulateTimeline(state.principal, state.phases, state.rate, state.freq, state.inflation);
     updateTimelineOutputs(result);
     renderPhases(result);
   }
@@ -768,6 +819,7 @@
     state.principal = Math.max(0, parseNumber(els.principal.value));
     state.monthly = Math.max(0, parseNumber(els.monthly.value));
     state.rate = Math.max(0, parseNumber(els.rate.value));
+    state.inflation = Math.min(10, Math.max(0, parseFloat(els.inflation.value) || 0));
     state.years = Math.min(40, Math.max(1, parseInt(els.years.value, 10) || 1));
   }
 
@@ -789,6 +841,11 @@
     els.bdContrib.textContent = fmtCurrency(result.totalContrib);
     els.bdInterest.textContent = fmtCurrency(result.totalInterest);
     els.bdTotal.textContent = fmtCurrency(result.finalBalance);
+
+    // Inflation-adjusted (real) value of final balance
+    const real = realValue(result.finalBalance, state.inflation, state.years);
+    els.realBalance.innerHTML = `${fmtReal(real)} <em>in today's purchasing power</em>`;
+    els.bdReal.textContent = fmtReal(real);
 
     const total = Math.max(1, result.principal + result.totalContrib + result.totalInterest);
     els.barPrincipal.style.width = (result.principal / total * 100) + '%';
@@ -838,6 +895,12 @@
 
   els.years.addEventListener('input', () => {
     els.yearsOut.textContent = els.years.value;
+    recalc();
+  });
+
+  els.inflation.addEventListener('input', () => {
+    const v = parseFloat(els.inflation.value) || 0;
+    els.inflationOut.textContent = (Number.isInteger(v) ? v.toFixed(0) : v.toFixed(1));
     recalc();
   });
 

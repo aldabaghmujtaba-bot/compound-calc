@@ -102,6 +102,37 @@ body {
   line-height: 1.05;
   word-break: break-all;
 }
+.balance__real {
+  margin: -4px 0 14px;
+  color: var(--muted);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+.balance__real em {
+  font-style: normal;
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  margin-left: 4px;
+  opacity: 0.85;
+}
+
+.breakdown__real {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+  color: var(--muted) !important;
+  font-variant-numeric: tabular-nums;
+  padding-top: 2px;
+  margin-top: -4px;
+}
+.breakdown__real strong {
+  color: var(--muted) !important;
+  font-weight: 600 !important;
+  font-size: 13px !important;
+}
+
 .balance__meta {
   display: grid;
   grid-template-columns: 1fr;
@@ -760,6 +791,32 @@ body[data-mode="timeline"] [data-mode-only="simple"]   { display: none !importan
   font-style: normal;
   font-weight: 400;
 }
+.phase__summary-row--real {
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  margin-top: -2px;
+}
+.phase__summary-row--real strong {
+  color: var(--muted) !important;
+  font-weight: 600 !important;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Two-line legend (timeline chart) */
+.tl-chart-legend { margin-top: 8px; }
+.legend-line {
+  display: inline-block;
+  width: 18px;
+  height: 0;
+  border-top: 2px solid var(--accent-2);
+  margin-right: 6px;
+  vertical-align: middle;
+}
+.legend-line--solid  { border-top-style: solid; }
+.legend-line--dashed {
+  border-top-style: dashed;
+  border-top-color: var(--muted);
+}
 
 .add-phase {
   appearance: none;
@@ -788,6 +845,13 @@ body[data-mode="timeline"] [data-mode-only="simple"]   { display: none !importan
 /* Timeline area chart */
 .chart .tl-area-fill { opacity: 0.85; }
 .chart .tl-area-line { fill: none; stroke: var(--accent-2); stroke-width: 2; }
+.chart .tl-real-line {
+  fill: none;
+  stroke: var(--muted);
+  stroke-width: 1.75;
+  stroke-dasharray: 5 4;
+  opacity: 0.95;
+}
 .chart .tl-phase-band { opacity: 0.08; }
 .chart .tl-phase-divider {
   stroke: var(--border);
