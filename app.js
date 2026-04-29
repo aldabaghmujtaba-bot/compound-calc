@@ -39,6 +39,24 @@
     cmpTableBody: $('cmpTableBody'),
 
     modeBtns: document.querySelectorAll('[data-mode-btn]'),
+
+    // Goal mode
+    goalIncome: $('goalIncome'),
+    goalCurrentAge: $('goalCurrentAge'),
+    goalRetireAge: $('goalRetireAge'),
+    goalRetireYears: $('goalRetireYears'),
+    goalContribValue: $('goalContribValue'),
+    goalContribHint: $('goalContribHint'),
+    goalNestEggValue: $('goalNestEggValue'),
+    goalNestEggReal: $('goalNestEggReal'),
+    goalIncomeAtRetire: $('goalIncomeAtRetire'),
+    goalIncomeNote: $('goalIncomeNote'),
+    goalSpan: $('goalSpan'),
+    goalBar: $('goalBar'),
+    goalBarAxis: $('goalBarAxis'),
+    goalMarker: $('goalMarker'),
+    goalTableBody: $('goalTableBody'),
+
     tlFinalBalance: $('tlFinalBalance'),
     tlMetaInvested: $('tlMetaInvested'),
     tlMetaInterest: $('tlMetaInterest'),
@@ -76,7 +94,15 @@
       { id: newPhaseId(), label: 'Accumulation', type: 'contribute', years: 25, amount: 1000 },
       { id: newPhaseId(), label: 'Retirement',   type: 'withdraw',   years: 20, amount: 4000 },
     ],
+
+    // Goal-planner inputs
+    goalIncome: 5000,        // monthly income needed (today's $)
+    goalCurrentAge: 35,
+    goalRetireAge: 65,
+    goalRetireYears: 30,
   };
+
+  const GOAL_TIERS = [500, 1000, 2000, 3000, 4000, 5000, 6000];
 
   const PHASE_TYPES = ['contribute', 'coast', 'withdraw'];
   const PHASE_LABEL = { contribute: 'Contribute', coast: 'Coast', withdraw: 'Withdraw' };
@@ -941,9 +967,181 @@
     renderPhases(result);
   }
 
+  // ---- Goal planner ----
+
+  // Target nest egg at retirement (in retirement-year nominal $) needed to fund
+  // an inflation-growing annuity for `yearsInRetire`. Uses a real monthly rate
+  // so withdrawals can grow with inflation each year.
+  function targetNestEgg(monthlyToday, yearsToRetire, yearsInRetire, annualRatePct, inflationPct) {
+    const monthlyAtRetire = inflatedAmount(monthlyToday, inflationPct, yearsToRetire);
+    const realAnnual = (1 + annualRatePct / 100) / (1 + (inflationPct || 0) / 100) - 1;
+    const monthlyReal = Math.pow(1 + realAnnual, 1 / 12) - 1;
+    const months = Math.max(0, yearsInRetire * 12);
+    if (months <= 0) return 0;
+    if (monthlyReal <= 0) return monthlyAtRetire * months;
+    return monthlyAtRetire * (1 - Math.pow(1 + monthlyReal, -months)) / monthlyReal;
+  }
+
+  // Monthly contribution needed to grow `currentSavings` to `target` over `years`
+  // at the shared annual rate + frequency. Uses simulate() so it matches the
+  // rest of the app's compounding semantics, with binary search for the C value.
+  function findRequiredMonthly(currentSavings, years, target, annualRatePct, freq) {
+    if (years <= 0) return Math.max(0, target - currentSavings);
+    // If we're already there with $0/mo, no contribution needed
+    if (simulate(currentSavings, 0, annualRatePct, freq, years).finalBalance >= target) return 0;
+    let lo = 0;
+    let hi = Math.max(100, target / Math.max(1, years * 12));
+    // Expand hi until we overshoot the target
+    for (let i = 0; i < 30; i++) {
+      if (simulate(currentSavings, hi, annualRatePct, freq, years).finalBalance >= target) break;
+      hi *= 2;
+      if (hi > 1e9) break;
+    }
+    for (let i = 0; i < 50; i++) {
+      const mid = (lo + hi) / 2;
+      if (simulate(currentSavings, mid, annualRatePct, freq, years).finalBalance < target) lo = mid;
+      else hi = mid;
+    }
+    return (lo + hi) / 2;
+  }
+
+  // Age at which `monthly` contribution from `currentSavings` first reaches
+  // `target`. Returns a fractional age, or null if not reached within 80 years.
+  function ageAtTarget(currentAge, currentSavings, monthly, target, annualRatePct, freq) {
+    if (currentSavings >= target) return currentAge;
+    if (target <= 0) return currentAge;
+    const r = annualRatePct / 100;
+    const monthsPerCompound = Math.max(1, Math.round(12 / freq));
+    const ratePerCompound = r / freq;
+    let bal = currentSavings;
+    const maxMonths = 80 * 12;
+    for (let m = 1; m <= maxMonths; m++) {
+      if (monthly > 0) bal += monthly;
+      if (m % monthsPerCompound === 0 && bal > 0) bal += bal * ratePerCompound;
+      if (bal >= target) return currentAge + m / 12;
+    }
+    return null;
+  }
+
+  function readGoalInputs() {
+    state.goalIncome = Math.max(0, parseNumber(els.goalIncome.value));
+    state.goalCurrentAge = Math.max(0, Math.min(120, parseNumber(els.goalCurrentAge.value) || 0));
+    state.goalRetireAge = Math.max(0, Math.min(120, parseNumber(els.goalRetireAge.value) || 0));
+    state.goalRetireYears = Math.max(0, Math.min(80, parseNumber(els.goalRetireYears.value) || 0));
+  }
+
+  function recalcGoal() {
+    readSharedInputs();
+    readGoalInputs();
+    const yearsToRetire = Math.max(0, state.goalRetireAge - state.goalCurrentAge);
+    const totalSpan = yearsToRetire + state.goalRetireYears;
+
+    // Card 1: Target nest egg
+    const nestEgg = targetNestEgg(state.goalIncome, yearsToRetire, state.goalRetireYears, state.rate, state.inflation);
+    const nestEggReal = realValue(nestEgg, state.inflation, yearsToRetire);
+    els.goalNestEggValue.textContent = fmtCurrency(nestEgg);
+    els.goalNestEggReal.innerHTML = `${fmtReal(nestEggReal)} <em>in today's purchasing power</em>`;
+
+    // Inflation-adjusted monthly income at retirement
+    const monthlyAtRetire = inflatedAmount(state.goalIncome, state.inflation, yearsToRetire);
+    els.goalIncomeAtRetire.textContent = fmtCurrency(monthlyAtRetire) + '/mo';
+    els.goalIncomeNote.innerHTML =
+      `<em>what ${fmtCurrency(state.goalIncome)}/mo today costs by age ${Math.round(state.goalRetireAge)}</em>`;
+
+    // Card 2: Monthly contribution needed
+    const requiredMonthly = findRequiredMonthly(state.principal, yearsToRetire, nestEgg, state.rate, state.freq);
+    els.goalContribValue.textContent = fmtCurrency(requiredMonthly) + '/mo';
+    if (yearsToRetire <= 0) {
+      els.goalContribHint.innerHTML = `<em>set a retirement age above your current age</em>`;
+    } else if (requiredMonthly < 0.5) {
+      els.goalContribHint.innerHTML = state.principal >= nestEgg
+        ? `<em>you're already past the target — no new contributions needed</em>`
+        : `<em>compound growth alone reaches the target</em>`;
+    } else {
+      const yearsLabel = Math.round(yearsToRetire);
+      els.goalContribHint.innerHTML = `<em>over the next ${yearsLabel} year${yearsLabel === 1 ? '' : 's'} to hit ${fmtCurrencyShort(nestEgg)}</em>`;
+    }
+
+    // Plan timeline bar (today → retirement → end)
+    renderGoalTimeline(yearsToRetire, state.goalRetireYears, state.goalCurrentAge, state.goalRetireAge, nestEgg);
+
+    // Card 3: Contribution scenarios
+    renderGoalScenarios(yearsToRetire, nestEgg);
+
+    els.goalSpan.textContent = `${state.goalCurrentAge} → ${Math.round(state.goalCurrentAge + totalSpan)}`;
+  }
+
+  function renderGoalTimeline(yearsToRetire, yearsInRetire, currentAge, retireAge, target) {
+    const total = Math.max(0.0001, yearsToRetire + yearsInRetire);
+    const accumPct = (yearsToRetire / total) * 100;
+    const retirePct = (yearsInRetire / total) * 100;
+
+    let bar = '';
+    if (accumPct > 0.05) {
+      bar += `<div class="tl-seg tl-seg--contribute" style="width:${accumPct.toFixed(3)}%">${accumPct >= 12 ? 'Accumulate' : ''}</div>`;
+    }
+    if (retirePct > 0.05) {
+      bar += `<div class="tl-seg tl-seg--withdraw" style="width:${retirePct.toFixed(3)}%">${retirePct >= 12 ? 'Retirement' : ''}</div>`;
+    }
+    if (!bar) bar = '<div class="tl-seg" style="width:100%; background:var(--card-2); color:var(--muted);">Set retirement age</div>';
+    els.goalBar.innerHTML = bar;
+
+    // Axis ticks: current age, retire age, end age
+    const endAge = currentAge + yearsToRetire + yearsInRetire;
+    const ticks = [
+      { age: currentAge, pct: 0 },
+      { age: retireAge,  pct: accumPct },
+      { age: endAge,     pct: 100 },
+    ];
+    let axis = '';
+    ticks.forEach((t) => {
+      axis += `<span style="left:${t.pct.toFixed(2)}%">age ${Math.round(t.age)}</span>`;
+    });
+    els.goalBarAxis.innerHTML = axis;
+
+    // Target marker pin above the retirement boundary
+    if (yearsToRetire > 0 && target > 0) {
+      els.goalMarker.innerHTML =
+        `<div class="goal-target-marker__pin" style="left:${accumPct.toFixed(2)}%">` +
+          `<span>target ${fmtCurrencyShort(target)}</span>` +
+        `</div>`;
+    } else {
+      els.goalMarker.innerHTML = '';
+    }
+  }
+
+  function renderGoalScenarios(yearsToRetire, target) {
+    let tbody = '';
+    GOAL_TIERS.forEach((m) => {
+      const balanceAtRetire = simulate(state.principal, m, state.rate, state.freq, yearsToRetire).finalBalance;
+      const ageHit = ageAtTarget(state.goalCurrentAge, state.principal, m, target, state.rate, state.freq);
+      const hitsBeforeRetire = ageHit != null && ageHit <= state.goalRetireAge + 1e-6;
+      const cls = hitsBeforeRetire ? 'is-hit' : 'is-miss';
+      let hitLabel;
+      if (ageHit == null) {
+        hitLabel = '<span class="cmp-card__sub">never</span>';
+      } else if (ageHit > state.goalRetireAge + 80) {
+        hitLabel = '<span class="cmp-card__sub">never</span>';
+      } else {
+        hitLabel = `age ${ageHit.toFixed(1).replace(/\.0$/, '')}`;
+      }
+      const pill = hitsBeforeRetire
+        ? `<span class="result-pill result-pill--hit">on track</span>`
+        : `<span class="result-pill result-pill--miss">short</span>`;
+      tbody +=
+        `<tr class="${cls}">` +
+          `<td>${fmtCurrency(m)}/mo</td>` +
+          `<td>${hitLabel}</td>` +
+          `<td>${fmtCurrency(balanceAtRetire)}</td>` +
+          `<td>${pill}</td>` +
+        `</tr>`;
+    });
+    els.goalTableBody.innerHTML = tbody;
+  }
+
   // ---- Mode switching ----
   function setMode(mode) {
-    if (mode !== 'simple' && mode !== 'timeline') return;
+    if (mode !== 'simple' && mode !== 'timeline' && mode !== 'goal') return;
     state.mode = mode;
     document.body.setAttribute('data-mode', mode);
     els.modeBtns.forEach((b) => {
@@ -954,7 +1152,10 @@
     // Update principal label depending on mode
     const principalLabel = $('principalLabel');
     if (principalLabel) {
-      principalLabel.textContent = mode === 'timeline' ? 'Starting balance' : 'Initial principal';
+      principalLabel.textContent =
+        mode === 'timeline' ? 'Starting balance' :
+        mode === 'goal'     ? 'Current savings' :
+                              'Initial principal';
     }
     recalc();
   }
@@ -984,6 +1185,10 @@
   function recalc() {
     if (state.mode === 'timeline') {
       recalcTimeline();
+      return;
+    }
+    if (state.mode === 'goal') {
+      recalcGoal();
       return;
     }
     readInputs();
@@ -1050,6 +1255,10 @@
   attachNumericInput(els.principal, { thousands: true });
   attachNumericInput(els.monthly, { thousands: true });
   attachNumericInput(els.rate, { thousands: false });
+  attachNumericInput(els.goalIncome, { thousands: true });
+  attachNumericInput(els.goalCurrentAge, { thousands: false });
+  attachNumericInput(els.goalRetireAge, { thousands: false });
+  attachNumericInput(els.goalRetireYears, { thousands: false });
 
   els.years.addEventListener('input', () => {
     els.yearsOut.textContent = els.years.value;
@@ -1077,11 +1286,13 @@
 
   window.addEventListener('resize', () => {
     if (state.mode === 'simple') renderChart(state.series);
-    else recalcTimeline();
+    else if (state.mode === 'timeline') recalcTimeline();
+    else recalcGoal();
   });
   window.addEventListener('orientationchange', () => setTimeout(() => {
     if (state.mode === 'simple') renderChart(state.series);
-    else recalcTimeline();
+    else if (state.mode === 'timeline') recalcTimeline();
+    else recalcGoal();
   }, 100));
 
   // ---- Mode toggle ----

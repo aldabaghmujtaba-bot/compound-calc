@@ -550,7 +550,7 @@ input[type="range"]::-moz-range-thumb {
 /* Mode toggle */
 .mode-toggle {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(3, 1fr);
   background: var(--card);
   border: 1px solid var(--border);
   border-radius: 12px;
@@ -580,9 +580,20 @@ input[type="range"]::-moz-range-thumb {
   outline-offset: 2px;
 }
 
-/* Mode visibility */
-body[data-mode="simple"]   [data-mode-only="timeline"] { display: none !important; }
-body[data-mode="timeline"] [data-mode-only="simple"]   { display: none !important; }
+/* Mode visibility — each mode shows only its own and "any" sections */
+body[data-mode="simple"]   [data-mode-only="timeline"],
+body[data-mode="simple"]   [data-mode-only="goal"]     { display: none !important; }
+body[data-mode="timeline"] [data-mode-only="simple"],
+body[data-mode="timeline"] [data-mode-only="goal"]     { display: none !important; }
+body[data-mode="goal"]     [data-mode-only="simple"],
+body[data-mode="goal"]     [data-mode-only="timeline"] { display: none !important; }
+
+/* Paired side-by-side fields (used in goal mode) */
+.field-pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
 
 /* Timeline bar */
 .tl-bar {
@@ -1007,6 +1018,136 @@ body[data-mode="timeline"] [data-mode-only="simple"]   { display: none !importan
   .phase__head { flex-wrap: wrap; }
   .phase__type-btn { font-size: 11px; }
   .phase__fields { grid-template-columns: 1fr; }
+}
+
+/* Goal mode — target nest egg + retirement income callout */
+.goal-target__head {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: 1fr;
+}
+@media (min-width: 480px) {
+  .goal-target__head { grid-template-columns: 1.1fr 1fr; align-items: start; }
+}
+.goal-target__value {
+  margin: 4px 0 6px;
+  font-size: clamp(26px, 7vw, 36px);
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  line-height: 1.05;
+  word-break: break-all;
+}
+.goal-target__real {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.goal-target__real em {
+  font-style: normal;
+  margin-left: 4px;
+  opacity: 0.85;
+  font-size: 11px;
+  letter-spacing: 0.02em;
+}
+.goal-target__income {
+  border-top: 1px solid var(--border);
+  padding-top: 14px;
+}
+@media (min-width: 480px) {
+  .goal-target__income { border-top: 0; padding-top: 0; border-left: 1px solid var(--border); padding-left: 16px; }
+}
+.goal-target__income-value {
+  margin: 4px 0 4px;
+  font-size: 22px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+  color: var(--text);
+}
+.goal-target__income-note {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.4;
+}
+.goal-target__income-note em {
+  font-style: normal;
+  letter-spacing: 0.01em;
+}
+
+/* Goal plan timeline (reuses .tl-bar styles, adds a target marker above) */
+.goal-target-marker {
+  position: relative;
+  height: 32px;
+  pointer-events: none;
+}
+.goal-target-marker__pin {
+  position: absolute;
+  top: 0;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  color: var(--accent);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  max-width: 60vw;
+}
+.goal-target-marker__pin span {
+  background: var(--card);
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  padding: 2px 6px;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+}
+.goal-target-marker__pin::after {
+  content: '';
+  width: 1px;
+  height: 8px;
+  background: var(--accent);
+  margin-top: 2px;
+}
+
+/* Goal scenarios table — green/red row coloring */
+.goal-table tr.is-hit  td {
+  background: linear-gradient(90deg, rgba(140, 240, 196, 0.18), rgba(140, 240, 196, 0.06));
+}
+.goal-table tr.is-hit  td:first-child {
+  border-left: 3px solid var(--contrib);
+  padding-left: 9px;
+  color: var(--contrib);
+  font-weight: 700;
+}
+.goal-table tr.is-miss td {
+  background: linear-gradient(90deg, rgba(255, 126, 126, 0.16), rgba(255, 126, 126, 0.05));
+}
+.goal-table tr.is-miss td:first-child {
+  border-left: 3px solid var(--negative);
+  padding-left: 9px;
+  color: var(--negative);
+  font-weight: 700;
+}
+.goal-table .result-pill {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+.goal-table .result-pill--hit  {
+  background: rgba(140, 240, 196, 0.22);
+  color: var(--contrib);
+}
+.goal-table .result-pill--miss {
+  background: rgba(255, 126, 126, 0.18);
+  color: var(--negative);
 }
 
 @media (prefers-reduced-motion: reduce) {
