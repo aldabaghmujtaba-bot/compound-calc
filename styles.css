@@ -1123,6 +1123,86 @@ body[data-mode="goal"]     [data-mode-only="timeline"] { display: none !importan
   .phase__fields { grid-template-columns: 1fr; }
 }
 
+/* Goal mode — "Your answer" hero card */
+.goal-hero {
+  background: linear-gradient(135deg, var(--card) 0%, var(--card-2) 100%);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--accent);
+  position: relative;
+  overflow: hidden;
+}
+.goal-hero::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(600px 300px at 100% 0%, rgba(var(--accent-2-rgb), 0.10), transparent 60%),
+    radial-gradient(400px 200px at 0% 100%, rgba(var(--accent-rgb), 0.08), transparent 60%);
+  pointer-events: none;
+}
+.goal-hero > * { position: relative; }
+.goal-hero__kicker {
+  margin: 0;
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.goal-hero__sentence {
+  margin: 8px 0 16px;
+  font-size: clamp(15px, 3.5vw, 18px);
+  line-height: 1.5;
+  color: var(--text);
+}
+.goal-hero__sentence strong {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.goal-hero__big {
+  display: inline-block;
+  font-size: clamp(28px, 7vw, 38px);
+  letter-spacing: -0.025em;
+  color: var(--accent-2);
+  line-height: 1.05;
+  vertical-align: -2px;
+  padding: 0 2px;
+}
+.goal-hero__grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+@media (min-width: 640px) {
+  .goal-hero__grid { grid-template-columns: 1fr 1fr; }
+}
+.goal-hero__stat {
+  display: grid;
+  gap: 4px;
+}
+.goal-hero__stat-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.goal-hero__stat-value {
+  font-size: clamp(20px, 5vw, 26px);
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+.goal-hero__stat-sub {
+  font-size: 12px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
 /* Goal mode — target nest egg + retirement income callout */
 .goal-target__head {
   display: grid;
@@ -1258,6 +1338,40 @@ body[data-mode="goal"]     [data-mode-only="timeline"] { display: none !importan
 .goal-table .withdraw-cell .cell-meta {
   color: var(--muted);
   font-weight: 400;
+}
+/* Runway indicator under each tier's monthly-withdrawal cell */
+.runway {
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  margin-top: 2px;
+}
+.runway--forever { color: var(--contrib); }
+.runway--finite  { color: var(--interest); }
+
+/* Subtle inline hint inside form labels (e.g. "(optional)") */
+.field-hint {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--muted);
+  letter-spacing: normal;
+  text-transform: none;
+  margin-left: 4px;
+}
+
+/* Phase age annotation — small muted line under the type buttons */
+.phase__age {
+  font-size: 11px;
+  color: var(--muted);
+  letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums;
+  margin: -4px 0 -2px 32px;     /* align under the type buttons, tight */
+}
+.phase__age strong {
+  color: var(--text);
+  font-weight: 600;
 }
 .goal-table th small {
   display: block;

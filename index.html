@@ -106,6 +106,27 @@
       </p>
     </section>
 
+    <section class="card goal-hero" data-mode-only="goal" aria-live="polite">
+      <p class="goal-hero__kicker">Your answer</p>
+      <p class="goal-hero__sentence" id="heroSentence">
+        To retire at age <strong id="heroRetireAge">65</strong> earning
+        <strong id="heroIncome">$5,000</strong>/month, contribute
+        <strong class="goal-hero__big" id="heroContrib">$0</strong>
+        starting today.
+      </p>
+      <div class="goal-hero__grid">
+        <div class="goal-hero__stat">
+          <span class="goal-hero__stat-label">You'll hit your target at</span>
+          <strong class="goal-hero__stat-value" id="heroHitAge">—</strong>
+        </div>
+        <div class="goal-hero__stat">
+          <span class="goal-hero__stat-label" id="heroForeverLabel">Max forever-sustainable monthly</span>
+          <strong class="goal-hero__stat-value" id="heroForever">—</strong>
+          <span class="goal-hero__stat-sub" id="heroForeverSub"></span>
+        </div>
+      </div>
+    </section>
+
     <section class="card balance" data-mode-only="goal" aria-live="polite">
       <p class="balance__label">Monthly contribution needed</p>
       <p class="balance__value" id="goalContribValue">$0</p>
@@ -218,6 +239,14 @@
         </div>
       </div>
 
+      <div class="field" data-mode-only="any">
+        <label for="currentAge">Your current age <span class="field-hint">(optional)</span></label>
+        <div class="input-suffix">
+          <input id="currentAge" type="text" inputmode="decimal" autocomplete="off" placeholder="35" value="" />
+          <span>yrs</span>
+        </div>
+      </div>
+
       <div class="field" data-mode-only="goal">
         <label for="goalIncome">Monthly income needed (today's $)</label>
         <div class="input-prefix">
@@ -228,26 +257,18 @@
 
       <div class="field-pair" data-mode-only="goal">
         <div class="field">
-          <label for="goalCurrentAge">Current age</label>
-          <div class="input-suffix">
-            <input id="goalCurrentAge" type="text" inputmode="decimal" autocomplete="off" value="35" />
-            <span>yrs</span>
-          </div>
-        </div>
-        <div class="field">
           <label for="goalRetireAge">Retirement age</label>
           <div class="input-suffix">
             <input id="goalRetireAge" type="text" inputmode="decimal" autocomplete="off" value="65" />
             <span>yrs</span>
           </div>
         </div>
-      </div>
-
-      <div class="field" data-mode-only="goal">
-        <label for="goalRetireYears">Years in retirement</label>
-        <div class="input-suffix">
-          <input id="goalRetireYears" type="text" inputmode="decimal" autocomplete="off" value="30" />
-          <span>yrs</span>
+        <div class="field">
+          <label for="goalRetireYears">Years in retirement</label>
+          <div class="input-suffix">
+            <input id="goalRetireYears" type="text" inputmode="decimal" autocomplete="off" value="30" />
+            <span>yrs</span>
+          </div>
         </div>
       </div>
     </section>

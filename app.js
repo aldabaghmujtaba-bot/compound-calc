@@ -41,10 +41,19 @@
     modeBtns: document.querySelectorAll('[data-mode-btn]'),
 
     // Goal mode
+    currentAge: $('currentAge'),               // shared with timeline
     goalIncome: $('goalIncome'),
-    goalCurrentAge: $('goalCurrentAge'),
     goalRetireAge: $('goalRetireAge'),
     goalRetireYears: $('goalRetireYears'),
+
+    // Goal-mode hero card
+    heroRetireAge: $('heroRetireAge'),
+    heroIncome: $('heroIncome'),
+    heroContrib: $('heroContrib'),
+    heroHitAge: $('heroHitAge'),
+    heroForeverLabel: $('heroForeverLabel'),
+    heroForever: $('heroForever'),
+    heroForeverSub: $('heroForeverSub'),
     goalContribValue: $('goalContribValue'),
     goalContribHint: $('goalContribHint'),
     goalNestEggValue: $('goalNestEggValue'),
@@ -99,9 +108,13 @@
       { id: newPhaseId(), label: 'Retirement',   type: 'withdraw',   years: 20, amount: 4000 },
     ],
 
+    // Shared age input — used by Goal mode (current age for retirement math)
+    // and Timeline mode (decorating phase cards with absolute ages). null
+    // means "not set" → Timeline shows years, Goal falls back to 35.
+    currentAge: null,
+
     // Goal-planner inputs
     goalIncome: 5000,        // monthly income needed (today's $)
-    goalCurrentAge: 35,
     goalRetireAge: 65,
     goalRetireYears: 30,
 
@@ -515,12 +528,18 @@
     }
     els.tlBar.innerHTML = bar;
 
-    // Axis ticks: 0, ~5 internal, totalYears
+    // Axis ticks: 0, ~5 internal, totalYears. Show ages (e.g. "age 33") when
+    // the user has set their current age in the shared input; otherwise show
+    // year offsets ("0y / 10y / 25y") as before.
     let axis = '';
     const ticks = chooseTicks(0, total);
+    const showAges = state.currentAge != null && state.currentAge > 0;
     ticks.forEach((t) => {
       const pct = total > 0 ? (t / total) * 100 : 0;
-      axis += `<span style="left:${pct.toFixed(2)}%">${formatYearTick(t)}</span>`;
+      const label = showAges
+        ? `age ${Math.round(state.currentAge + t)}`
+        : formatYearTick(t);
+      axis += `<span style="left:${pct.toFixed(2)}%">${label}</span>`;
     });
     els.tlBarAxis.innerHTML = axis;
     els.tlYears.textContent = formatYearLen(total) || '0 years';
@@ -772,9 +791,14 @@
     const items = result.phaseResults;
     let html = '';
     phases.forEach((p, i) => {
-      const r = items[i] || { startBalance: 0, endBalance: 0, contrib: 0, withdraw: 0, interest: 0 };
+      const r = items[i] || { startBalance: 0, endBalance: 0, contrib: 0, withdraw: 0, interest: 0, startYear: 0, endYear: 0 };
       const showAmount = p.type !== 'coast';
       const amountLabel = p.type === 'withdraw' ? 'Monthly withdrawal' : 'Monthly contribution';
+      // Optional age annotation: only shown when the shared "Your current
+      // age" input is set. Maps phase start/end years onto absolute ages.
+      const ageLine = (state.currentAge != null && state.currentAge > 0)
+        ? `<p class="phase__age">Age <strong>${Math.round(state.currentAge + r.startYear)}</strong> → <strong>${Math.round(state.currentAge + r.endYear)}</strong></p>`
+        : '';
       html +=
         `<div class="phase phase--${p.type}" data-phase="${p.id}">` +
           `<div class="phase__head">` +
@@ -790,6 +814,7 @@
               `<button type="button" class="phase-icon-btn phase-icon-btn--del" data-action="delete" aria-label="Delete phase"${phases.length <= 1 ? ' disabled' : ''}>×</button>` +
             `</div>` +
           `</div>` +
+          ageLine +
           `<div class="phase__fields">` +
             `<div class="phase-field phase-field--full">` +
               `<label>Label (optional)</label>` +
@@ -968,6 +993,14 @@
     state.principal = Math.max(0, parseNumber(els.principal.value));
     state.rate = Math.max(0, parseNumber(els.rate.value));
     state.inflation = Math.min(10, Math.max(0, parseFloat(els.inflation.value) || 0));
+    // currentAge is shared between Timeline and Goal. Empty input → null
+    // (Timeline shows year numbers, Goal falls back to 35).
+    if (els.currentAge) {
+      const ageRaw = parseNumber(els.currentAge.value);
+      state.currentAge = (els.currentAge.value || '').trim() === '' || ageRaw <= 0
+        ? null
+        : Math.min(120, ageRaw);
+    }
     // freq is updated by segmented click handler
   }
 
@@ -1032,6 +1065,20 @@
       if (bal >= target) return currentAge + m / 12;
     }
     return null;
+  }
+
+  // Forever-sustainable monthly withdrawal in TODAY's $ — the perpetuity
+  // amount where real interest income equals the withdrawal so the real
+  // balance never declines. Returns 0 when real return ≤ 0 (no perpetual
+  // withdrawal possible — money must eventually deplete).
+  function perpetualMonthlyWithdrawal(balanceAtRetire, yearsToRetire, ratePct, inflPct) {
+    if (!isFinite(balanceAtRetire) || balanceAtRetire <= 0) return 0;
+    const i = Math.max(0, inflPct || 0);
+    const realAnnual = (1 + ratePct / 100) / (1 + i / 100) - 1;
+    if (realAnnual <= 0) return 0;
+    const monthlyReal = Math.pow(1 + realAnnual, 1 / 12) - 1;
+    const realBalance = balanceAtRetire / Math.pow(1 + i / 100, Math.max(0, yearsToRetire));
+    return realBalance * monthlyReal;
   }
 
   // Maximum monthly withdrawal in TODAY's $ that can be sustained for
@@ -1199,15 +1246,15 @@
     );
     const balanceAtRetire = projection.balanceAtRetire;
     const realBalance = realValue(balanceAtRetire, state.inflation, yearsToRetire);
-    const ageHit = ageAtTarget(state.goalCurrentAge, state.principal, tier, target, state.rate, state.freq);
+    const ageHit = ageAtTarget(effectiveGoalAge(), state.principal, tier, target, state.rate, state.freq);
     const maxWithdraw = maxSustainableWithdrawal(balanceAtRetire, yearsToRetire, state.goalRetireYears, state.rate, state.inflation);
     const interestEarned = balanceAtRetire - state.principal - tier * yearsToRetire * 12;
 
     const milestones = [
-      { year: 0, kind: 'today', label: `today (age ${Math.round(state.goalCurrentAge)})` },
+      { year: 0, kind: 'today', label: `today (age ${Math.round(effectiveGoalAge())})` },
     ];
-    if (ageHit != null && ageHit <= state.goalCurrentAge + yearsToRetire + state.goalRetireYears) {
-      const hitYear = ageHit - state.goalCurrentAge;
+    if (ageHit != null && ageHit <= effectiveGoalAge() + yearsToRetire + state.goalRetireYears) {
+      const hitYear = ageHit - effectiveGoalAge();
       if (hitYear > 0.5 && Math.abs(hitYear - yearsToRetire) > 0.5) {
         milestones.push({ year: hitYear, kind: 'hit', label: `hits target (${ageHit.toFixed(1)})` });
       }
@@ -1259,7 +1306,7 @@
   function renderWhatIf(target, realTarget) {
     // Resolve effective inputs (auto-fill if user hasn't touched the input)
     const userAge = state.whatifAge != null ? state.whatifAge : state.goalRetireAge;
-    const yearsToRetire = Math.max(0, userAge - state.goalCurrentAge);
+    const yearsToRetire = Math.max(0, userAge - effectiveGoalAge());
     const autoMonthly = whatifPreFillMonthly(yearsToRetire, realTarget);
     const userMonthly = state.whatifMonthly != null ? state.whatifMonthly : autoMonthly;
 
@@ -1290,7 +1337,7 @@
     const verdictText = hits
       ? `On track to retire at ${userAge}`
       : yearsToRetire <= 0
-        ? `Set an age above ${state.goalCurrentAge}`
+        ? `Set an age above ${effectiveGoalAge()}`
         : `Short of the target at ${userAge}`;
 
     const diff = realBalAtAge - whatifRealTarget;
@@ -1314,15 +1361,22 @@
 
   function readGoalInputs() {
     state.goalIncome = Math.max(0, parseNumber(els.goalIncome.value));
-    state.goalCurrentAge = Math.max(0, Math.min(120, parseNumber(els.goalCurrentAge.value) || 0));
+    // currentAge is shared. Empty input → null (Timeline hides age, Goal falls back).
+    const ageRaw = parseNumber(els.currentAge.value);
+    state.currentAge = (els.currentAge.value || '').trim() === '' || ageRaw <= 0
+      ? null
+      : Math.min(120, ageRaw);
     state.goalRetireAge = Math.max(0, Math.min(120, parseNumber(els.goalRetireAge.value) || 0));
     state.goalRetireYears = Math.max(0, Math.min(80, parseNumber(els.goalRetireYears.value) || 0));
   }
+  // Goal-mode helper: effective current age (35 when blank, since the math
+  // needs *some* anchor and 35 is the long-standing pre-existing default).
+  function effectiveGoalAge() { return state.currentAge != null ? state.currentAge : 35; }
 
   function recalcGoal() {
     readSharedInputs();
     readGoalInputs();
-    const yearsToRetire = Math.max(0, state.goalRetireAge - state.goalCurrentAge);
+    const yearsToRetire = Math.max(0, state.goalRetireAge - effectiveGoalAge());
     const totalSpan = yearsToRetire + state.goalRetireYears;
 
     // Card 1: Target nest egg
@@ -1351,8 +1405,49 @@
       els.goalContribHint.innerHTML = `<em>over the next ${yearsLabel} year${yearsLabel === 1 ? '' : 's'} to hit ${fmtCurrencyShort(nestEgg)}</em>`;
     }
 
+    // ---- Hero card — the plain-language answer at the top of Goal mode ----
+    // Project the balance you'd actually have if you contributed the required
+    // monthly, then read three numbers off it: hit-target age, perpetual
+    // (forever) monthly draw, or finite years if real return ≤ 0.
+    const projectedBalance = simulate(state.principal, requiredMonthly, state.rate, state.freq, yearsToRetire).finalBalance;
+    const heroAgeHit = ageAtTarget(effectiveGoalAge(), state.principal, requiredMonthly, nestEgg, state.rate, state.freq);
+    const perpetual = perpetualMonthlyWithdrawal(projectedBalance, yearsToRetire, state.rate, state.inflation);
+
+    els.heroRetireAge.textContent = Math.round(state.goalRetireAge);
+    els.heroIncome.textContent = fmtCurrency(state.goalIncome);
+    els.heroContrib.textContent = requiredMonthly < 0.5
+      ? '$0'
+      : fmtCurrency(requiredMonthly) + '/mo';
+
+    if (heroAgeHit == null || heroAgeHit > state.goalRetireAge + 80) {
+      els.heroHitAge.textContent = 'never';
+    } else {
+      els.heroHitAge.textContent = `age ${heroAgeHit.toFixed(1)}`;
+    }
+
+    if (perpetual > 0.5) {
+      // Real return is positive → there's a perpetual draw rate
+      els.heroForeverLabel.textContent = "Max you can withdraw without ever running out";
+      els.heroForever.textContent = fmtCurrency(perpetual) + '/mo';
+      const vsGoal = perpetual >= state.goalIncome
+        ? `covers your ${fmtCurrency(state.goalIncome)}/mo goal`
+        : `${fmtCurrency(state.goalIncome - perpetual)}/mo short of your goal`;
+      els.heroForeverSub.textContent = `today's $ · ${vsGoal}`;
+    } else {
+      // Real return ≤ 0 → no perpetual draw possible. Show finite runway at goal income.
+      const yearsLast = yearsUntilDepletion(projectedBalance, state.goalIncome, yearsToRetire, state.rate, state.freq, state.inflation);
+      els.heroForeverLabel.textContent = "At your goal income, money lasts";
+      if (!isFinite(yearsLast)) {
+        els.heroForever.textContent = 'forever';
+        els.heroForeverSub.textContent = '';
+      } else {
+        els.heroForever.textContent = `${yearsLast.toFixed(1)} years`;
+        els.heroForeverSub.textContent = `at ${fmtCurrency(state.goalIncome)}/mo (real return ≤ 0)`;
+      }
+    }
+
     // Plan timeline bar (today → retirement → end)
-    renderGoalTimeline(yearsToRetire, state.goalRetireYears, state.goalCurrentAge, state.goalRetireAge, nestEgg);
+    renderGoalTimeline(yearsToRetire, state.goalRetireYears, effectiveGoalAge(), state.goalRetireAge, nestEgg);
 
     // Card 3: Contribution scenarios — pass real target so green/red is
     // decided on purchasing power, not nominal numbers.
@@ -1365,7 +1460,7 @@
     // What-if widget
     renderWhatIf(nestEgg, nestEggReal);
 
-    els.goalSpan.textContent = `${state.goalCurrentAge} → ${Math.round(state.goalCurrentAge + totalSpan)}`;
+    els.goalSpan.textContent = `${effectiveGoalAge()} → ${Math.round(effectiveGoalAge() + totalSpan)}`;
   }
 
   function renderGoalTimeline(yearsToRetire, yearsInRetire, currentAge, retireAge, target) {
@@ -1411,7 +1506,7 @@
     let tbody = '';
     GOAL_TIERS.forEach((m) => {
       const balanceAtRetire = simulate(state.principal, m, state.rate, state.freq, yearsToRetire).finalBalance;
-      const ageHit = ageAtTarget(state.goalCurrentAge, state.principal, m, target, state.rate, state.freq);
+      const ageHit = ageAtTarget(effectiveGoalAge(), state.principal, m, target, state.rate, state.freq);
       const realBalance = realValue(balanceAtRetire, state.inflation, yearsToRetire);
       const diff = realBalance - realTarget;
       // Sustainable monthly withdrawal (today's $) given balance at chosen retire age
@@ -1446,10 +1541,27 @@
         diffStr = `<span class="vs-target vs-target--neg">−${fmtCurrency(Math.abs(diff))}</span>`;
       }
 
-      // Sustainable monthly withdrawal cell
-      const withdrawCell = sustainableMonthly > 0
-        ? `<span class="withdraw-cell">${fmtRealShort(sustainableMonthly)}<span class="cell-meta">/mo for ${state.goalRetireYears}y</span></span>`
-        : `<span class="cmp-card__sub">—</span>`;
+      // Sustainable monthly withdrawal cell with runway indicator.
+      // "forever" (green) when the user's planned goalIncome is sustainable
+      // indefinitely at this tier's balance; otherwise shows years until
+      // depletion at goalIncome (amber).
+      let withdrawCell;
+      if (sustainableMonthly > 0) {
+        const yearsAtGoal = yearsUntilDepletion(
+          balanceAtRetire, state.goalIncome, yearsToRetire,
+          state.rate, state.freq, state.inflation
+        );
+        const runway = !isFinite(yearsAtGoal)
+          ? `<span class="runway runway--forever">forever</span>`
+          : `<span class="runway runway--finite">${Math.round(yearsAtGoal)} years</span>`;
+        withdrawCell =
+          `<span class="withdraw-cell">${fmtRealShort(sustainableMonthly)}` +
+            `<span class="cell-meta">/mo for ${state.goalRetireYears}y</span>` +
+            runway +
+          `</span>`;
+      } else {
+        withdrawCell = `<span class="cmp-card__sub">—</span>`;
+      }
 
       tbody +=
         `<tr class="${cls}" data-tier="${m}" tabindex="0" aria-expanded="${state.goalExpandedTier === m}">` +
@@ -1506,6 +1618,12 @@
     state.rate = Math.max(0, parseNumber(els.rate.value));
     state.inflation = Math.min(10, Math.max(0, parseFloat(els.inflation.value) || 0));
     state.years = Math.min(40, Math.max(1, parseInt(els.years.value, 10) || 1));
+    if (els.currentAge) {
+      const ageRaw = parseNumber(els.currentAge.value);
+      state.currentAge = (els.currentAge.value || '').trim() === '' || ageRaw <= 0
+        ? null
+        : Math.min(120, ageRaw);
+    }
   }
 
   function recalc() {
@@ -1582,7 +1700,7 @@
   attachNumericInput(els.monthly, { thousands: true });
   attachNumericInput(els.rate, { thousands: false });
   attachNumericInput(els.goalIncome, { thousands: true });
-  attachNumericInput(els.goalCurrentAge, { thousands: false });
+  attachNumericInput(els.currentAge, { thousands: false });
   attachNumericInput(els.goalRetireAge, { thousands: false });
   attachNumericInput(els.goalRetireYears, { thousands: false });
 
