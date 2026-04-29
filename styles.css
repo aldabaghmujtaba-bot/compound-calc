@@ -1114,6 +1114,61 @@ body[data-mode="goal"]     [data-mode-only="timeline"] { display: none !importan
 }
 
 /* Goal scenarios table — green/red row coloring */
+/* Goal scenarios table — wider for 6 columns, scroll fade hint, stacked cells */
+.goal-table { min-width: 620px; }
+.goal-table th small {
+  display: block;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--muted);
+  letter-spacing: 0.02em;
+  margin-top: 2px;
+  text-transform: none;
+}
+.goal-table td {
+  font-size: 12px;
+  vertical-align: top;
+  padding: 10px 8px;
+}
+.goal-table .cell-meta {
+  display: block;
+  font-size: 11px;
+  color: var(--muted);
+  font-weight: 400;
+  margin-top: 1px;
+  letter-spacing: 0.02em;
+}
+.goal-table .real-cell {
+  font-size: 12px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+.goal-table .vs-target {
+  display: inline-block;
+  font-size: 12px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.goal-table .vs-target--pos { color: var(--contrib); }
+.goal-table .vs-target--neg { color: var(--negative); }
+
+/* Scroll-fade hint on the goal table wrap. Uses background-attachment: local
+   so the gray edge shadows only show when there is more content to scroll
+   in that direction. The "card-color → transparent" gradients act as covers
+   anchored to the content edges. */
+.goal-table-wrap {
+  background:
+    linear-gradient(to right, var(--card), transparent) 0 0,
+    linear-gradient(to left,  var(--card), transparent) 100% 0,
+    linear-gradient(to right, rgba(0, 0, 0, 0.35), transparent) 0 0,
+    linear-gradient(to left,  rgba(0, 0, 0, 0.35), transparent) 100% 0;
+  background-repeat: no-repeat;
+  background-size: 32px 100%, 32px 100%, 14px 100%, 14px 100%;
+  background-attachment: local, local, scroll, scroll;
+}
+
 .goal-table tr.is-hit  td {
   background: linear-gradient(90deg, rgba(140, 240, 196, 0.18), rgba(140, 240, 196, 0.06));
 }

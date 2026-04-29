@@ -1065,8 +1065,9 @@
     // Plan timeline bar (today → retirement → end)
     renderGoalTimeline(yearsToRetire, state.goalRetireYears, state.goalCurrentAge, state.goalRetireAge, nestEgg);
 
-    // Card 3: Contribution scenarios
-    renderGoalScenarios(yearsToRetire, nestEgg);
+    // Card 3: Contribution scenarios — pass real target so green/red is
+    // decided on purchasing power, not nominal numbers.
+    renderGoalScenarios(yearsToRetire, nestEgg, nestEggReal);
 
     els.goalSpan.textContent = `${state.goalCurrentAge} → ${Math.round(state.goalCurrentAge + totalSpan)}`;
   }
@@ -1110,29 +1111,46 @@
     }
   }
 
-  function renderGoalScenarios(yearsToRetire, target) {
+  function renderGoalScenarios(yearsToRetire, target, realTarget) {
     let tbody = '';
     GOAL_TIERS.forEach((m) => {
       const balanceAtRetire = simulate(state.principal, m, state.rate, state.freq, yearsToRetire).finalBalance;
       const ageHit = ageAtTarget(state.goalCurrentAge, state.principal, m, target, state.rate, state.freq);
-      const hitsBeforeRetire = ageHit != null && ageHit <= state.goalRetireAge + 1e-6;
-      const cls = hitsBeforeRetire ? 'is-hit' : 'is-miss';
+      const realBalance = realValue(balanceAtRetire, state.inflation, yearsToRetire);
+      const diff = realBalance - realTarget;
+
+      // Hit/miss now compares purchasing power, not nominal $
+      const hits = realBalance >= realTarget - 0.5;
+      const cls = hits ? 'is-hit' : 'is-miss';
+
       let hitLabel;
-      if (ageHit == null) {
-        hitLabel = '<span class="cmp-card__sub">never</span>';
-      } else if (ageHit > state.goalRetireAge + 80) {
+      if (ageHit == null || ageHit > state.goalRetireAge + 80) {
         hitLabel = '<span class="cmp-card__sub">never</span>';
       } else {
         hitLabel = `age ${ageHit.toFixed(1).replace(/\.0$/, '')}`;
       }
-      const pill = hitsBeforeRetire
+
+      const pill = hits
         ? `<span class="result-pill result-pill--hit">on track</span>`
         : `<span class="result-pill result-pill--miss">short</span>`;
+
+      // vs-target diff in today's dollars: + green / − red
+      let diffStr;
+      if (Math.abs(diff) < 1) {
+        diffStr = `<span class="vs-target">—</span>`;
+      } else if (diff > 0) {
+        diffStr = `<span class="vs-target vs-target--pos">+${fmtCurrency(diff)}</span>`;
+      } else {
+        diffStr = `<span class="vs-target vs-target--neg">−${fmtCurrency(Math.abs(diff))}</span>`;
+      }
+
       tbody +=
         `<tr class="${cls}">` +
           `<td>${fmtCurrency(m)}/mo</td>` +
           `<td>${hitLabel}</td>` +
-          `<td>${fmtCurrency(balanceAtRetire)}</td>` +
+          `<td><strong>${fmtCurrency(balanceAtRetire)}</strong><span class="cell-meta">(nominal)</span></td>` +
+          `<td><span class="real-cell">${fmtReal(realBalance)}</span></td>` +
+          `<td>${diffStr}</td>` +
           `<td>${pill}</td>` +
         `</tr>`;
     });
