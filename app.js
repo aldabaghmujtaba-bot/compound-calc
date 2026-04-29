@@ -638,15 +638,33 @@
     return r.finalBalance;
   }
 
-  function renderCompareStripInner(phase, startBalance, rate, freq) {
+  // Compact "$X.Xk" / "$X.XM" formatter — used inside scenario cards where
+  // space is tight but we want one decimal of precision.
+  function fmtCompactMoney(n) {
+    if (!isFinite(n)) return '$0';
+    const a = Math.abs(n);
+    if (a >= 1e6) return '$' + (n / 1e6).toFixed(1) + 'M';
+    if (a >= 1e3) return '$' + (n / 1e3).toFixed(1) + 'k';
+    return '$' + Math.round(n);
+  }
+
+  function renderCompareStripInner(phase, startBalance, startYear, rate, freq) {
     const variants = phaseScenarios(phase);
     const ends = variants.map((v) => phaseEndBalance(startBalance, v, rate, freq));
     const currentEnd = ends[1];
     const isWithdraw = phase.type === 'withdraw';
+    const inflPct = state.inflation || 0;
+    const sy = Math.max(0, startYear || 0);
 
     let html = '';
     variants.forEach((v, i) => {
       const end = ends[i];
+      // End year for this scenario: contribute/withdraw keep the phase length,
+      // coast scenarios vary it. realValue uses cumulative year from t=0.
+      const scenarioYears = Math.max(0, v.years || 0);
+      const endYear = sy + scenarioYears;
+      const realEnd = realValue(end, inflPct, endYear);
+
       let cls = 'cmp-card';
       let sub;
       if (v._current) {
@@ -672,10 +690,23 @@
         const shrank = end < startBalance - 0.5;
         sub = grew ? '↑ growing' : shrank ? '↓ shrinking' : '→ flat';
       }
+
+      // Inflated monthly amount (withdraw only) — what scenario.amount today
+      // costs at the year this phase begins.
+      let inflatedLine = '';
+      if (isWithdraw && inflPct > 0 && sy >= 0.5 && (v.amount || 0) > 0) {
+        const inflated = inflatedAmount(v.amount, inflPct, sy);
+        const yr = Math.round(sy);
+        inflatedLine =
+          `<span class="cmp-card__inflated">~${fmtCompactMoney(inflated)}/mo @ y${yr}</span>`;
+      }
+
       html +=
         `<div class="${cls}">` +
           `<span class="cmp-card__label">${escapeHtml(v._label)}</span>` +
+          inflatedLine +
           `<strong class="cmp-card__value">${fmtCurrencyShort(end)}</strong>` +
+          `<span class="cmp-card__real">${fmtRealShort(realEnd)}</span>` +
           `<span class="cmp-card__sub">${escapeHtml(sub)}</span>` +
         `</div>`;
     });
@@ -770,7 +801,7 @@
           `<div class="phase__compare" data-compare>` +
             `<p class="phase__compare-title">${escapeHtml(compareTitleFor(p))}</p>` +
             `<div class="phase__compare-grid" data-compare-grid>` +
-              renderCompareStripInner(p, r.startBalance || 0, state.rate, state.freq) +
+              renderCompareStripInner(p, r.startBalance || 0, r.startYear || 0, state.rate, state.freq) +
             `</div>` +
           `</div>` +
         `</div>`;
@@ -865,7 +896,7 @@
       // Scenario comparison strip — re-render its three cards
       const grid = card.querySelector('[data-compare-grid]');
       if (grid) {
-        grid.innerHTML = renderCompareStripInner(p, r.startBalance || 0, state.rate, state.freq);
+        grid.innerHTML = renderCompareStripInner(p, r.startBalance || 0, r.startYear || 0, state.rate, state.freq);
       }
       // Update the comparison title in case the user just changed phase type
       // (setPhaseType triggers full recalc, but defend anyway)

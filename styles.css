@@ -863,6 +863,36 @@ body[data-mode="timeline"] [data-mode-only="simple"]   { display: none !importan
   font-weight: 600;
   letter-spacing: 0.02em;
 }
+.cmp-card__real {
+  font-size: 11px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: -2px;
+  font-weight: 500;
+}
+.cmp-card__inflated {
+  font-size: 10px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  opacity: 0.85;
+  margin-top: -2px;
+  letter-spacing: -0.01em;
+}
+/* On colored side cards, keep the real-value line muted for visual hierarchy
+   (don't tint it green/red — only the headline value picks up the color). */
+.cmp-card--better .cmp-card__real,
+.cmp-card--worse  .cmp-card__real,
+.cmp-card--better .cmp-card__inflated,
+.cmp-card--worse  .cmp-card__inflated {
+  color: var(--muted);
+  opacity: 0.9;
+}
 .cmp-card--better {
   background: rgba(140, 240, 196, 0.10);
   border-color: rgba(140, 240, 196, 0.45);
@@ -891,6 +921,8 @@ body[data-mode="timeline"] [data-mode-only="simple"]   { display: none !importan
 @media (max-width: 360px) {
   .cmp-card__value { font-size: 13px; }
   .cmp-card__label { font-size: 10px; }
+  .cmp-card__real { font-size: 10px; }
+  .cmp-card__inflated { font-size: 9px; }
 }
 
 .phase__summary-row--real {
