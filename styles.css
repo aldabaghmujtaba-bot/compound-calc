@@ -1194,8 +1194,47 @@ body[data-mode="goal"]     [data-mode-only="timeline"] { display: none !importan
   margin-top: 2px;
 }
 
-/* Goal scenarios table — wider for 6 columns, scroll fade hint, stacked cells */
-.goal-table { min-width: 620px; }
+/* Goal scenarios table — wider for 7 columns, scroll fade hint, stacked cells */
+.goal-table { min-width: 760px; }
+.goal-table tbody tr {
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.goal-table tbody tr:hover td {
+  background: linear-gradient(90deg, rgba(var(--accent-rgb), 0.06), transparent);
+}
+.goal-table tbody tr.is-expanded td {
+  background: linear-gradient(90deg, rgba(var(--accent-rgb), 0.14), rgba(var(--accent-rgb), 0.04)) !important;
+}
+.goal-table tbody tr.is-expanded td:first-child {
+  border-left: 3px solid var(--accent);
+  padding-left: 9px;
+}
+.goal-table .row-chevron {
+  display: inline-block;
+  width: 0;
+  height: 0;
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+  border-top: 5px solid var(--muted);
+  margin-left: 6px;
+  vertical-align: middle;
+  transition: transform 0.2s;
+}
+.goal-table tr.is-expanded .row-chevron {
+  transform: rotate(180deg);
+  border-top-color: var(--accent);
+}
+.goal-table .withdraw-cell {
+  font-size: 12px;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+.goal-table .withdraw-cell .cell-meta {
+  color: var(--muted);
+  font-weight: 400;
+}
 .goal-table th small {
   display: block;
   font-size: 11px;
@@ -1283,6 +1322,218 @@ body[data-mode="goal"]     [data-mode-only="timeline"] { display: none !importan
 .goal-table .result-pill--miss {
   background: rgba(var(--negative-rgb), 0.18);
   color: var(--negative);
+}
+
+/* Goal scenarios detail panel (shown when a row is tapped) */
+.goal-detail {
+  margin-top: 16px;
+  padding: 14px;
+  background: var(--card-2);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: 12px;
+  display: grid;
+  gap: 14px;
+}
+.goal-detail__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.goal-detail__title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: -0.01em;
+  margin: 0;
+}
+.goal-detail__close {
+  appearance: none;
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  font-family: inherit;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.goal-detail__close:hover { color: var(--text); border-color: var(--accent); }
+
+.goal-detail__chart-wrap {
+  width: 100%;
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--card);
+  border: 1px solid var(--border);
+}
+.goal-detail__chart {
+  display: block;
+  width: 100%;
+  height: 180px;
+  touch-action: manipulation;
+}
+.goal-detail__chart .axis text {
+  fill: var(--muted);
+  font-size: 10px;
+  font-family: inherit;
+}
+.goal-detail__chart .axis line {
+  stroke: var(--border);
+}
+.goal-detail__chart .balance-line {
+  fill: none;
+  stroke: var(--accent-2);
+  stroke-width: 2;
+}
+.goal-detail__chart .balance-fill {
+  fill: var(--accent-2);
+  opacity: 0.18;
+}
+.goal-detail__chart .target-line {
+  stroke: var(--accent);
+  stroke-width: 1.5;
+  stroke-dasharray: 5 4;
+}
+.goal-detail__chart .target-label {
+  fill: var(--accent);
+  font-size: 10px;
+  font-weight: 700;
+  font-family: inherit;
+}
+.goal-detail__chart .milestone-line {
+  stroke: var(--muted);
+  stroke-width: 1;
+  stroke-dasharray: 2 3;
+  opacity: 0.6;
+}
+.goal-detail__chart .milestone-line.is-hit {
+  stroke: var(--contrib);
+  opacity: 0.9;
+}
+.goal-detail__chart .milestone-line.is-retire {
+  stroke: var(--accent);
+  opacity: 0.9;
+}
+.goal-detail__chart .milestone-label {
+  fill: var(--muted);
+  font-size: 9px;
+  font-family: inherit;
+  letter-spacing: 0.02em;
+}
+
+.goal-detail__legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  font-size: 10px;
+  color: var(--muted);
+  letter-spacing: 0.02em;
+}
+.goal-detail__legend .legend-line { width: 14px; }
+
+.goal-detail__stats {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+}
+@media (min-width: 480px) {
+  .goal-detail__stats { grid-template-columns: repeat(4, 1fr); }
+}
+.goal-stat {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 8px;
+  text-align: center;
+  display: grid;
+  gap: 3px;
+}
+.goal-stat__label {
+  font-size: 10px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: 600;
+}
+.goal-stat__value {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.goal-stat__sub {
+  font-size: 10px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* "What if I retire early?" widget */
+.goal-whatif__inputs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.goal-whatif__output {
+  display: grid;
+  gap: 10px;
+}
+.goal-whatif__verdict {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: var(--card-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 14px;
+  gap: 12px;
+}
+.goal-whatif__verdict.is-hit  {
+  background: linear-gradient(90deg, rgba(var(--contrib-rgb), 0.18), rgba(var(--contrib-rgb), 0.05));
+  border-color: rgba(var(--contrib-rgb), 0.4);
+}
+.goal-whatif__verdict.is-miss {
+  background: linear-gradient(90deg, rgba(var(--negative-rgb), 0.16), rgba(var(--negative-rgb), 0.05));
+  border-color: rgba(var(--negative-rgb), 0.4);
+}
+.goal-whatif__verdict-text {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+}
+.goal-whatif__verdict.is-hit  .goal-whatif__verdict-text { color: var(--contrib); }
+.goal-whatif__verdict.is-miss .goal-whatif__verdict-text { color: var(--negative); }
+.goal-whatif__verdict-sub {
+  font-size: 11px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  flex-shrink: 1;
+  min-width: 0;
+}
+.goal-whatif__stats {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+}
+@media (min-width: 480px) {
+  .goal-whatif__stats { grid-template-columns: repeat(3, 1fr); }
+}
+
+@media (max-width: 360px) {
+  .goal-whatif__inputs { grid-template-columns: 1fr; }
 }
 
 /* Theme toggle (sun/moon icon, fixed top-right of viewport) */

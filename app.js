@@ -56,6 +56,10 @@
     goalBarAxis: $('goalBarAxis'),
     goalMarker: $('goalMarker'),
     goalTableBody: $('goalTableBody'),
+    goalDetail: $('goalDetail'),
+    whatifAge: $('whatifAge'),
+    whatifMonthly: $('whatifMonthly'),
+    whatifOutput: $('whatifOutput'),
 
     tlFinalBalance: $('tlFinalBalance'),
     tlMetaInvested: $('tlMetaInvested'),
@@ -100,6 +104,13 @@
     goalCurrentAge: 35,
     goalRetireAge: 65,
     goalRetireYears: 30,
+
+    // Detail panel — which scenario tier is currently expanded (or null)
+    goalExpandedTier: null,
+
+    // What-if widget — null means "use the auto pre-fill from the on-track tier"
+    whatifAge: null,
+    whatifMonthly: null,
   };
 
   const GOAL_TIERS = [500, 1000, 2000, 3000, 4000, 5000, 6000];
@@ -1023,6 +1034,284 @@
     return null;
   }
 
+  // Maximum monthly withdrawal in TODAY's $ that can be sustained for
+  // `yearsInRetire` years out of a nominal `balanceAtRetire` (in retirement-year $).
+  // Uses the real return rate so the resulting monthly figure represents
+  // constant purchasing power.
+  function maxSustainableWithdrawal(balanceAtRetire, yearsToRetire, yearsInRetire, ratePct, inflPct) {
+    if (!isFinite(balanceAtRetire) || balanceAtRetire <= 0 || yearsInRetire <= 0) return 0;
+    const i = Math.max(0, inflPct || 0);
+    const pvToday = balanceAtRetire / Math.pow(1 + i / 100, Math.max(0, yearsToRetire));
+    const realAnnual = (1 + ratePct / 100) / (1 + i / 100) - 1;
+    const monthlyReal = Math.pow(1 + realAnnual, 1 / 12) - 1;
+    const months = yearsInRetire * 12;
+    if (monthlyReal <= 0) return pvToday / months;
+    return pvToday * monthlyReal / (1 - Math.pow(1 + monthlyReal, -months));
+  }
+
+  // Years until balance hits zero given an inflation-growing monthly withdrawal
+  // (anchored to `monthlyTodayDollars` in today's purchasing power).
+  // Returns a fractional year count, or `Infinity` if it never depletes.
+  function yearsUntilDepletion(startBalance, monthlyTodayDollars, yearsToRetire, ratePct, freq, inflPct) {
+    if (!isFinite(startBalance) || startBalance <= 0) return 0;
+    if (!isFinite(monthlyTodayDollars) || monthlyTodayDollars <= 0) return Infinity;
+    const r = ratePct / 100;
+    const monthsPerCompound = Math.max(1, Math.round(12 / freq));
+    const ratePerCompound = r / freq;
+    const i = Math.max(0, inflPct || 0);
+    const monthlyInfl = Math.pow(1 + i / 100, 1 / 12) - 1;
+    let bal = startBalance;
+    // Withdrawal at month 1 of retirement, in retirement-year nominal $
+    let withdraw = monthlyTodayDollars * Math.pow(1 + i / 100, Math.max(0, yearsToRetire));
+    const cap = 100 * 12;
+    for (let m = 1; m <= cap; m++) {
+      bal -= withdraw;
+      if (bal <= 0) return m / 12;
+      if (m % monthsPerCompound === 0) bal += bal * ratePerCompound;
+      withdraw *= (1 + monthlyInfl);
+    }
+    return Infinity;
+  }
+
+  // Project balance year-by-year through accumulation + retirement, withdrawing
+  // `monthlyIncomeToday` (in today's $) once retirement starts, growing with
+  // inflation each month. Used by the detail panel mini chart.
+  function projectFullPlan(P, monthly, yearsToRetire, yearsInRetire, monthlyIncomeToday, ratePct, freq, inflPct) {
+    const r = ratePct / 100;
+    const monthsPerCompound = Math.max(1, Math.round(12 / freq));
+    const ratePerCompound = r / freq;
+    const i = Math.max(0, inflPct || 0);
+    const monthlyInfl = Math.pow(1 + i / 100, 1 / 12) - 1;
+
+    let bal = Math.max(0, P);
+    let cumMonth = 0;
+    const series = [{ year: 0, balance: bal }];
+
+    // Accumulation
+    const accumMonths = Math.round(yearsToRetire * 12);
+    for (let m = 1; m <= accumMonths; m++) {
+      cumMonth++;
+      if (monthly > 0) bal += monthly;
+      if (cumMonth % monthsPerCompound === 0 && bal > 0) bal += bal * ratePerCompound;
+      if (cumMonth % 12 === 0) series.push({ year: cumMonth / 12, balance: bal });
+    }
+    const balanceAtRetire = bal;
+
+    // Retirement
+    const retireMonths = Math.round(yearsInRetire * 12);
+    let withdrawNominal = monthlyIncomeToday * Math.pow(1 + i / 100, Math.max(0, yearsToRetire));
+    let depletedAtYear = null;
+    for (let m = 1; m <= retireMonths; m++) {
+      cumMonth++;
+      bal = Math.max(0, bal - withdrawNominal);
+      if (cumMonth % monthsPerCompound === 0 && bal > 0) bal += bal * ratePerCompound;
+      withdrawNominal *= (1 + monthlyInfl);
+      if (bal <= 0 && depletedAtYear == null) depletedAtYear = cumMonth / 12;
+      if (cumMonth % 12 === 0) series.push({ year: cumMonth / 12, balance: bal });
+    }
+    // Make sure the very last point is recorded
+    if (series[series.length - 1].year !== cumMonth / 12) {
+      series.push({ year: cumMonth / 12, balance: bal });
+    }
+
+    return { series, balanceAtRetire, finalBalance: bal, depletedAtYear };
+  }
+
+  // Render the mini line chart inside a detail panel.
+  function renderProjectionChart(svg, series, target, milestones) {
+    const W = svg.clientWidth || 360;
+    const H = 180;
+    const padL = 44, padR = 12, padT = 10, padB = 26;
+    const innerW = W - padL - padR;
+    const innerH = H - padT - padB;
+    svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+    svg.setAttribute('preserveAspectRatio', 'none');
+
+    if (!series || series.length < 2) { svg.innerHTML = ''; return; }
+    const maxYear = series[series.length - 1].year || 1;
+    const maxVal = Math.max(target || 0, ...series.map(s => s.balance), 1);
+    const niceMax = niceCeil(maxVal);
+    const xOf = (y) => padL + (y / maxYear) * innerW;
+    const yOf = (v) => padT + innerH - (v / niceMax) * innerH;
+
+    // Y grid + labels
+    const ticks = 3;
+    let yAxis = '';
+    for (let k = 0; k <= ticks; k++) {
+      const v = (niceMax * k) / ticks;
+      const yy = padT + innerH - (v / niceMax) * innerH;
+      yAxis += `<line x1="${padL}" y1="${yy}" x2="${W - padR}" y2="${yy}" stroke-opacity="0.06"/>`;
+      yAxis += `<text x="${padL - 6}" y="${yy + 3}" text-anchor="end">${fmtCurrencyShort(v)}</text>`;
+    }
+
+    // Balance line + soft fill
+    const baseY = yOf(0);
+    let line = `M ${xOf(series[0].year).toFixed(2)} ${yOf(Math.max(0, series[0].balance)).toFixed(2)} `;
+    for (let i = 1; i < series.length; i++) {
+      line += `L ${xOf(series[i].year).toFixed(2)} ${yOf(Math.max(0, series[i].balance)).toFixed(2)} `;
+    }
+    let fill = `M ${xOf(series[0].year).toFixed(2)} ${baseY.toFixed(2)} `;
+    series.forEach((s) => {
+      fill += `L ${xOf(s.year).toFixed(2)} ${yOf(Math.max(0, s.balance)).toFixed(2)} `;
+    });
+    fill += `L ${xOf(series[series.length - 1].year).toFixed(2)} ${baseY.toFixed(2)} Z`;
+
+    // Target horizontal line
+    let targetEl = '';
+    if (target > 0 && target <= niceMax) {
+      const ty = yOf(target);
+      targetEl =
+        `<line class="target-line" x1="${padL}" y1="${ty}" x2="${W - padR}" y2="${ty}"/>` +
+        `<text class="target-label" x="${W - padR}" y="${Math.max(padT + 10, ty - 4)}" text-anchor="end">target ${fmtCurrencyShort(target)}</text>`;
+    }
+
+    // Milestone vertical lines (today, hit-target, retire)
+    let milestoneEls = '';
+    (milestones || []).forEach((m) => {
+      if (m.year == null || m.year < 0 || m.year > maxYear + 0.01) return;
+      const x = xOf(m.year);
+      const cls = m.kind === 'hit' ? 'milestone-line is-hit'
+                : m.kind === 'retire' ? 'milestone-line is-retire'
+                : 'milestone-line';
+      milestoneEls += `<line class="${cls}" x1="${x}" y1="${padT}" x2="${x}" y2="${padT + innerH}"/>`;
+      milestoneEls += `<text class="milestone-label" x="${x}" y="${H - 8}" text-anchor="middle">${escapeHtml(m.label)}</text>`;
+    });
+
+    svg.innerHTML =
+      `<g class="axis" stroke="currentColor">${yAxis}</g>` +
+      `<path class="balance-fill" d="${fill}"/>` +
+      `<path class="balance-line" d="${line}"/>` +
+      targetEl +
+      milestoneEls;
+  }
+
+  function renderGoalDetail(tier, ctx) {
+    const el = els.goalDetail;
+    if (tier == null) {
+      el.hidden = true;
+      el.innerHTML = '';
+      return;
+    }
+    const { yearsToRetire, target, realTarget } = ctx;
+    const projection = projectFullPlan(
+      state.principal, tier, yearsToRetire, state.goalRetireYears,
+      state.goalIncome, state.rate, state.freq, state.inflation
+    );
+    const balanceAtRetire = projection.balanceAtRetire;
+    const realBalance = realValue(balanceAtRetire, state.inflation, yearsToRetire);
+    const ageHit = ageAtTarget(state.goalCurrentAge, state.principal, tier, target, state.rate, state.freq);
+    const maxWithdraw = maxSustainableWithdrawal(balanceAtRetire, yearsToRetire, state.goalRetireYears, state.rate, state.inflation);
+    const interestEarned = balanceAtRetire - state.principal - tier * yearsToRetire * 12;
+
+    const milestones = [
+      { year: 0, kind: 'today', label: `today (age ${Math.round(state.goalCurrentAge)})` },
+    ];
+    if (ageHit != null && ageHit <= state.goalCurrentAge + yearsToRetire + state.goalRetireYears) {
+      const hitYear = ageHit - state.goalCurrentAge;
+      if (hitYear > 0.5 && Math.abs(hitYear - yearsToRetire) > 0.5) {
+        milestones.push({ year: hitYear, kind: 'hit', label: `hits target (${ageHit.toFixed(1)})` });
+      }
+    }
+    milestones.push({ year: yearsToRetire, kind: 'retire', label: `retire (${state.goalRetireAge})` });
+
+    const ageHitLabel = ageHit == null
+      ? 'never'
+      : ageHit > state.goalRetireAge + 80 ? 'never' : `age ${ageHit.toFixed(1)}`;
+
+    el.innerHTML =
+      `<div class="goal-detail__head">` +
+        `<p class="goal-detail__title">${fmtCurrency(tier)}/mo · projected balance over time</p>` +
+        `<button type="button" class="goal-detail__close" id="goalDetailClose" aria-label="Close detail">×</button>` +
+      `</div>` +
+      `<div class="goal-detail__chart-wrap">` +
+        `<svg class="goal-detail__chart" id="goalDetailChart" role="img" aria-label="Projected balance"></svg>` +
+      `</div>` +
+      `<ul class="goal-detail__legend">` +
+        `<li><span class="legend-line legend-line--solid" style="border-top-color: var(--accent-2)"></span>Balance</li>` +
+        `<li><span class="legend-line legend-line--dashed" style="border-top-color: var(--accent)"></span>Target nest egg</li>` +
+        (ageHit != null && ageHit <= state.goalRetireAge ? `<li><span class="legend-line legend-line--dashed" style="border-top-color: var(--contrib)"></span>Hits target</li>` : '') +
+      `</ul>` +
+      `<div class="goal-detail__stats">` +
+        `<div class="goal-stat"><span class="goal-stat__label">Earliest retire</span><strong class="goal-stat__value">${ageHitLabel}</strong></div>` +
+        `<div class="goal-stat"><span class="goal-stat__label">Bal @ age ${Math.round(state.goalRetireAge)}</span><strong class="goal-stat__value">${fmtCurrencyShort(balanceAtRetire)}</strong><span class="goal-stat__sub">${fmtRealShort(realBalance)} today</span></div>` +
+        `<div class="goal-stat"><span class="goal-stat__label">Sustainable monthly</span><strong class="goal-stat__value">${fmtRealShort(maxWithdraw)}</strong><span class="goal-stat__sub">today's $</span></div>` +
+        `<div class="goal-stat"><span class="goal-stat__label">Interest earned</span><strong class="goal-stat__value">${fmtCurrencyShort(Math.max(0, interestEarned))}</strong><span class="goal-stat__sub">accumulation</span></div>` +
+      `</div>`;
+    el.hidden = false;
+
+    // Render the mini chart now that the SVG exists in the DOM
+    const svg = document.getElementById('goalDetailChart');
+    if (svg) renderProjectionChart(svg, projection.series, target, milestones);
+  }
+
+  // What-if widget — auto pre-fill the monthly contribution from the smallest
+  // GOAL_TIER that hits the real target (or the largest tier if none does).
+  function whatifPreFillMonthly(yearsToRetire, realTarget) {
+    let best = null;
+    for (const tier of GOAL_TIERS) {
+      const bal = simulate(state.principal, tier, state.rate, state.freq, yearsToRetire).finalBalance;
+      const real = realValue(bal, state.inflation, yearsToRetire);
+      if (real >= realTarget) { best = tier; break; }
+    }
+    return best != null ? best : GOAL_TIERS[GOAL_TIERS.length - 1];
+  }
+
+  function renderWhatIf(target, realTarget) {
+    // Resolve effective inputs (auto-fill if user hasn't touched the input)
+    const userAge = state.whatifAge != null ? state.whatifAge : state.goalRetireAge;
+    const yearsToRetire = Math.max(0, userAge - state.goalCurrentAge);
+    const autoMonthly = whatifPreFillMonthly(yearsToRetire, realTarget);
+    const userMonthly = state.whatifMonthly != null ? state.whatifMonthly : autoMonthly;
+
+    // Only overwrite the input if the user hasn't typed there yet
+    if (state.whatifAge == null && document.activeElement !== els.whatifAge) {
+      els.whatifAge.value = String(state.goalRetireAge);
+    }
+    if (state.whatifMonthly == null && document.activeElement !== els.whatifMonthly) {
+      els.whatifMonthly.value = formatThousands(autoMonthly);
+    }
+
+    // Compute outcomes
+    const balAtAge = simulate(state.principal, userMonthly, state.rate, state.freq, yearsToRetire).finalBalance;
+    const realBalAtAge = realValue(balAtAge, state.inflation, yearsToRetire);
+    // Target needs to be re-computed for THIS retirement age (different from the chosen one)
+    const whatifTarget = targetNestEgg(state.goalIncome, yearsToRetire, state.goalRetireYears, state.rate, state.inflation);
+    const whatifRealTarget = realValue(whatifTarget, state.inflation, yearsToRetire);
+    const hits = realBalAtAge >= whatifRealTarget - 0.5;
+    const maxWithdraw = maxSustainableWithdrawal(balAtAge, yearsToRetire, state.goalRetireYears, state.rate, state.inflation);
+    const yearsLast = yearsUntilDepletion(balAtAge, state.goalIncome, yearsToRetire, state.rate, state.freq, state.inflation);
+
+    const yearsLastLabel = !isFinite(yearsLast)
+      ? 'never runs out'
+      : yearsLast >= state.goalRetireYears
+        ? `lasts the full ${state.goalRetireYears}+ years`
+        : `lasts ~${yearsLast.toFixed(1)} years`;
+
+    const verdictText = hits
+      ? `On track to retire at ${userAge}`
+      : yearsToRetire <= 0
+        ? `Set an age above ${state.goalCurrentAge}`
+        : `Short of the target at ${userAge}`;
+
+    const diff = realBalAtAge - whatifRealTarget;
+    const diffLabel = Math.abs(diff) < 1
+      ? '—'
+      : diff > 0
+        ? `+${fmtCurrency(diff)} surplus`
+        : `−${fmtCurrency(Math.abs(diff))} short`;
+
+    els.whatifOutput.innerHTML =
+      `<div class="goal-whatif__verdict ${hits ? 'is-hit' : 'is-miss'}">` +
+        `<span class="goal-whatif__verdict-text">${escapeHtml(verdictText)}</span>` +
+        `<span class="goal-whatif__verdict-sub">${escapeHtml(diffLabel)} <em>(today's $)</em></span>` +
+      `</div>` +
+      `<div class="goal-whatif__stats">` +
+        `<div class="goal-stat"><span class="goal-stat__label">Balance @ ${Math.round(userAge)}</span><strong class="goal-stat__value">${fmtCurrencyShort(balAtAge)}</strong><span class="goal-stat__sub">${fmtRealShort(realBalAtAge)} today</span></div>` +
+        `<div class="goal-stat"><span class="goal-stat__label">Sustainable monthly</span><strong class="goal-stat__value">${fmtRealShort(maxWithdraw)}</strong><span class="goal-stat__sub">today's $ for ${state.goalRetireYears}y</span></div>` +
+        `<div class="goal-stat"><span class="goal-stat__label">At your goal income</span><strong class="goal-stat__value">${escapeHtml(yearsLastLabel)}</strong><span class="goal-stat__sub">${fmtCurrency(state.goalIncome)}/mo today</span></div>` +
+      `</div>`;
+  }
+
   function readGoalInputs() {
     state.goalIncome = Math.max(0, parseNumber(els.goalIncome.value));
     state.goalCurrentAge = Math.max(0, Math.min(120, parseNumber(els.goalCurrentAge.value) || 0));
@@ -1068,6 +1357,13 @@
     // Card 3: Contribution scenarios — pass real target so green/red is
     // decided on purchasing power, not nominal numbers.
     renderGoalScenarios(yearsToRetire, nestEgg, nestEggReal);
+
+    // Detail panel for the currently-expanded tier (if any)
+    const ctx = { yearsToRetire, target: nestEgg, realTarget: nestEggReal };
+    renderGoalDetail(state.goalExpandedTier, ctx);
+
+    // What-if widget
+    renderWhatIf(nestEgg, nestEggReal);
 
     els.goalSpan.textContent = `${state.goalCurrentAge} → ${Math.round(state.goalCurrentAge + totalSpan)}`;
   }
@@ -1118,16 +1414,22 @@
       const ageHit = ageAtTarget(state.goalCurrentAge, state.principal, m, target, state.rate, state.freq);
       const realBalance = realValue(balanceAtRetire, state.inflation, yearsToRetire);
       const diff = realBalance - realTarget;
+      // Sustainable monthly withdrawal (today's $) given balance at chosen retire age
+      const sustainableMonthly = maxSustainableWithdrawal(
+        balanceAtRetire, yearsToRetire, state.goalRetireYears, state.rate, state.inflation
+      );
 
-      // Hit/miss now compares purchasing power, not nominal $
+      // Hit/miss compares purchasing power, not nominal $
       const hits = realBalance >= realTarget - 0.5;
-      const cls = hits ? 'is-hit' : 'is-miss';
+      let cls = hits ? 'is-hit' : 'is-miss';
+      if (state.goalExpandedTier === m) cls += ' is-expanded';
 
-      let hitLabel;
+      // Earliest retirement age — fractional, always 1 decimal
+      let ageLabel;
       if (ageHit == null || ageHit > state.goalRetireAge + 80) {
-        hitLabel = '<span class="cmp-card__sub">never</span>';
+        ageLabel = '<span class="cmp-card__sub">never</span>';
       } else {
-        hitLabel = `age ${ageHit.toFixed(1).replace(/\.0$/, '')}`;
+        ageLabel = `age ${ageHit.toFixed(1)}`;
       }
 
       const pill = hits
@@ -1144,12 +1446,18 @@
         diffStr = `<span class="vs-target vs-target--neg">−${fmtCurrency(Math.abs(diff))}</span>`;
       }
 
+      // Sustainable monthly withdrawal cell
+      const withdrawCell = sustainableMonthly > 0
+        ? `<span class="withdraw-cell">${fmtRealShort(sustainableMonthly)}<span class="cell-meta">/mo for ${state.goalRetireYears}y</span></span>`
+        : `<span class="cmp-card__sub">—</span>`;
+
       tbody +=
-        `<tr class="${cls}">` +
-          `<td>${fmtCurrency(m)}/mo</td>` +
-          `<td>${hitLabel}</td>` +
+        `<tr class="${cls}" data-tier="${m}" tabindex="0" aria-expanded="${state.goalExpandedTier === m}">` +
+          `<td>${fmtCurrency(m)}/mo<span class="row-chevron" aria-hidden="true"></span></td>` +
+          `<td>${ageLabel}</td>` +
           `<td><strong>${fmtCurrency(balanceAtRetire)}</strong><span class="cell-meta">(nominal)</span></td>` +
           `<td><span class="real-cell">${fmtReal(realBalance)}</span></td>` +
+          `<td>${withdrawCell}</td>` +
           `<td>${diffStr}</td>` +
           `<td>${pill}</td>` +
         `</tr>`;
@@ -1317,6 +1625,76 @@
   els.modeBtns.forEach((btn) => {
     btn.addEventListener('click', () => setMode(btn.getAttribute('data-mode-btn')));
   });
+
+  // ---- Goal scenarios — row-tap to expand detail panel ----
+  if (els.goalTableBody) {
+    els.goalTableBody.addEventListener('click', (e) => {
+      const row = e.target.closest('[data-tier]');
+      if (!row) return;
+      const tier = parseInt(row.getAttribute('data-tier'), 10);
+      // Toggle: tap the same row again to collapse
+      state.goalExpandedTier = (state.goalExpandedTier === tier) ? null : tier;
+      recalcGoal();
+      // Smooth-scroll the detail into view if we just expanded
+      if (state.goalExpandedTier != null && els.goalDetail && !els.goalDetail.hidden) {
+        els.goalDetail.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
+    });
+    // Keyboard support for accessibility
+    els.goalTableBody.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter' && e.key !== ' ') return;
+      const row = e.target.closest('[data-tier]');
+      if (!row) return;
+      e.preventDefault();
+      row.click();
+    });
+  }
+  // Close button inside the detail panel (event-delegated since the panel
+  // is re-rendered on every recalc)
+  if (els.goalDetail) {
+    els.goalDetail.addEventListener('click', (e) => {
+      if (e.target.closest('#goalDetailClose')) {
+        state.goalExpandedTier = null;
+        recalcGoal();
+      }
+    });
+  }
+
+  // ---- What-if widget ----
+  // Mark the inputs as "touched" so auto pre-fill stops overwriting them.
+  if (els.whatifAge) {
+    els.whatifAge.addEventListener('input', () => {
+      const v = parseNumber(els.whatifAge.value);
+      state.whatifAge = isFinite(v) && v > 0 ? Math.min(120, v) : null;
+      recalcGoal();
+    });
+    els.whatifAge.addEventListener('blur', () => {
+      if (state.whatifAge == null) return;
+      els.whatifAge.value = String(Math.round(state.whatifAge));
+    });
+  }
+  if (els.whatifMonthly) {
+    els.whatifMonthly.addEventListener('input', () => {
+      const raw = els.whatifMonthly.value;
+      const cleaned = raw.replace(/[^\d.]/g, '');
+      const parts = cleaned.split('.');
+      const intPart = parts[0] || '';
+      const decPart = parts.length > 1 ? '.' + parts.slice(1).join('').slice(0, 2) : '';
+      const formatted = (intPart ? parseInt(intPart, 10).toLocaleString('en-US') : '') + decPart;
+      if (formatted !== raw) {
+        const cursorAtEnd = els.whatifMonthly.selectionStart === raw.length;
+        els.whatifMonthly.value = formatted;
+        if (cursorAtEnd) els.whatifMonthly.setSelectionRange(formatted.length, formatted.length);
+      }
+      const v = parseNumber(els.whatifMonthly.value);
+      state.whatifMonthly = v >= 0 ? v : null;
+      recalcGoal();
+    });
+    els.whatifMonthly.addEventListener('blur', () => {
+      if (state.whatifMonthly == null) return;
+      els.whatifMonthly.value = formatThousands(state.whatifMonthly);
+    });
+  }
 
   // ---- Theme toggle ----
   // Theme is bootstrapped by an inline script in index.html (before paint) so

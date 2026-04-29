@@ -342,16 +342,17 @@
     <section class="card comparison" data-mode-only="goal" aria-label="Contribution scenarios">
       <div class="comparison__head">
         <h2>Contribution scenarios</h2>
-        <span class="comparison__hint">Real values vs target — swipe →</span>
+        <span class="comparison__hint">Tap a row for detail · swipe →</span>
       </div>
       <div class="comparison__table-wrap goal-table-wrap">
         <table class="comparison__table goal-table" id="goalTable">
           <thead>
             <tr>
               <th scope="col">Monthly</th>
-              <th scope="col">Hits target at</th>
+              <th scope="col">Earliest retirement age</th>
               <th scope="col">Balance at retirement</th>
               <th scope="col">Real value <small>(today's $)</small></th>
+              <th scope="col">Monthly you could withdraw <small>(today's $)</small></th>
               <th scope="col">vs target</th>
               <th scope="col">Result</th>
             </tr>
@@ -359,6 +360,31 @@
           <tbody id="goalTableBody"></tbody>
         </table>
       </div>
+      <div class="goal-detail" id="goalDetail" hidden></div>
+    </section>
+
+    <section class="card goal-whatif" data-mode-only="goal" aria-label="What if I retire early">
+      <div class="chart-card__head">
+        <h2>What if I retire early?</h2>
+        <span class="chart-card__hint">Try a different age + contribution</span>
+      </div>
+      <div class="goal-whatif__inputs">
+        <div class="field">
+          <label for="whatifAge">Retire at age</label>
+          <div class="input-suffix">
+            <input id="whatifAge" type="text" inputmode="decimal" autocomplete="off" value="65" />
+            <span>yrs</span>
+          </div>
+        </div>
+        <div class="field">
+          <label for="whatifMonthly">Contribute monthly</label>
+          <div class="input-prefix">
+            <span>$</span>
+            <input id="whatifMonthly" type="text" inputmode="decimal" autocomplete="off" value="3,000" />
+          </div>
+        </div>
+      </div>
+      <div class="goal-whatif__output" id="whatifOutput"></div>
     </section>
 
     <footer class="app__footer">
