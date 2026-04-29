@@ -1538,9 +1538,18 @@ body[data-mode="goal"]     [data-mode-only="timeline"] { display: none !importan
 
 /* Theme toggle (sun/moon icon, fixed top-right of viewport) */
 .theme-toggle {
+  /* Fallback first — plain values work in every browser. If the env()/calc()
+     line below fails to parse, these stay applied. (Previously a max()+env()
+     combo could be silently discarded by some engines, dropping the element
+     to its document-flow position in the top-left corner.) */
   position: fixed;
-  top: max(12px, env(safe-area-inset-top));
-  right: max(12px, env(safe-area-inset-right));
+  top: 12px;
+  right: 12px;
+  /* Progressive enhancement: add the safe-area inset on devices that have one
+     (notch, dynamic island). The 0px fallback in env() guarantees the calc()
+     resolves cleanly when the env var is unavailable. */
+  top: calc(12px + env(safe-area-inset-top, 0px));
+  right: calc(12px + env(safe-area-inset-right, 0px));
   width: 40px;
   height: 40px;
   min-width: 40px;
@@ -1554,11 +1563,15 @@ body[data-mode="goal"]     [data-mode-only="timeline"] { display: none !importan
   justify-content: center;
   cursor: pointer;
   box-shadow: var(--shadow);
-  z-index: 100;
+  z-index: 1000;          /* well above any card / chart content */
   padding: 0;
+  margin: 0;
   font-family: inherit;
-  transition: background 0.2s, color 0.2s, border-color 0.2s, box-shadow 0.2s;
+  pointer-events: auto;   /* defensive — never let an ancestor disable it */
+  -webkit-tap-highlight-color: transparent;
+  transition: background 0.2s, color 0.2s, border-color 0.2s, box-shadow 0.2s, transform 0.1s;
 }
+.theme-toggle:active { transform: scale(0.94); }
 .theme-toggle:hover { color: var(--text); border-color: var(--accent); }
 .theme-toggle:focus-visible {
   outline: 2px solid var(--accent);

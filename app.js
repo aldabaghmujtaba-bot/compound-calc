@@ -1626,6 +1626,62 @@
     btn.addEventListener('click', () => setMode(btn.getAttribute('data-mode-btn')));
   });
 
+  // ---- Theme toggle ----
+  // Wired EARLY (right after mode-toggle) so it's independent of any
+  // goal-mode-specific handlers further down. setTheme writes the attribute
+  // to both <html> and <body>, persists to localStorage, and re-syncs the
+  // <meta name="theme-color"> from the resolved --bg.
+  const THEME_KEY = 'compound-theme';
+  function setTheme(theme) {
+    if (theme !== 'dark' && theme !== 'light') return;
+    document.documentElement.setAttribute('data-theme', theme);
+    document.body.setAttribute('data-theme', theme);
+    try { localStorage.setItem(THEME_KEY, theme); } catch (_) { /* ignore */ }
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) {
+      const bg = getComputedStyle(document.body).getPropertyValue('--bg').trim();
+      if (bg) meta.setAttribute('content', bg);
+    }
+  }
+  const themeToggleBtn = document.getElementById('themeToggle');
+  if (themeToggleBtn) {
+    const onThemeToggle = (e) => {
+      if (e) { e.preventDefault(); e.stopPropagation(); }
+      const cur = document.body.getAttribute('data-theme');
+      const next = cur === 'light' ? 'dark' : 'light';
+      setTheme(next);
+    };
+    themeToggleBtn.addEventListener('click', onThemeToggle);
+    // Belt-and-suspenders: some mobile browsers can lose synthesised clicks
+    // on the first tap on a fixed element with a transition. A touchend
+    // listener guarantees the toggle responds to the very first tap too.
+    themeToggleBtn.addEventListener('touchend', (e) => {
+      e.preventDefault();
+      onThemeToggle(e);
+    }, { passive: false });
+  }
+  // Sync meta theme-color on initial load (the inline bootstrap already set
+  // the data-theme attribute, but the meta tag still reflects the dark default).
+  (function syncMetaThemeColor() {
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (!meta) return;
+    const bg = getComputedStyle(document.body).getPropertyValue('--bg').trim();
+    if (bg) meta.setAttribute('content', bg);
+  })();
+  // If the user hasn't explicitly chosen a theme, follow live OS-level changes.
+  if (window.matchMedia) {
+    const mq = window.matchMedia('(prefers-color-scheme: light)');
+    const onChange = (e) => {
+      let saved = null;
+      try { saved = localStorage.getItem(THEME_KEY); } catch (_) {}
+      if (saved !== 'dark' && saved !== 'light') {
+        setTheme(e.matches ? 'light' : 'dark');
+      }
+    };
+    if (mq.addEventListener) mq.addEventListener('change', onChange);
+    else if (mq.addListener) mq.addListener(onChange);
+  }
+
   // ---- Goal scenarios — row-tap to expand detail panel ----
   if (els.goalTableBody) {
     els.goalTableBody.addEventListener('click', (e) => {
@@ -1694,52 +1750,6 @@
       if (state.whatifMonthly == null) return;
       els.whatifMonthly.value = formatThousands(state.whatifMonthly);
     });
-  }
-
-  // ---- Theme toggle ----
-  // Theme is bootstrapped by an inline script in index.html (before paint) so
-  // we just toggle from whatever was set there and persist the preference.
-  const THEME_KEY = 'compound-theme';
-  function setTheme(theme) {
-    if (theme !== 'dark' && theme !== 'light') return;
-    document.documentElement.setAttribute('data-theme', theme);
-    document.body.setAttribute('data-theme', theme);
-    try { localStorage.setItem(THEME_KEY, theme); } catch (_) { /* ignore */ }
-    // Update the meta theme-color so the iOS status bar / Android URL bar
-    // tint matches. We read the resolved --bg from CSS to avoid hardcoding.
-    const meta = document.querySelector('meta[name="theme-color"]');
-    if (meta) {
-      const bg = getComputedStyle(document.body).getPropertyValue('--bg').trim();
-      if (bg) meta.setAttribute('content', bg);
-    }
-  }
-  const themeToggleBtn = document.getElementById('themeToggle');
-  if (themeToggleBtn) {
-    themeToggleBtn.addEventListener('click', () => {
-      const current = document.body.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
-      setTheme(current === 'dark' ? 'light' : 'dark');
-    });
-  }
-  // Sync meta theme-color on initial load (the inline bootstrap already set
-  // the data-theme attribute, but the meta tag still reflects the dark default).
-  (function syncMetaThemeColor() {
-    const meta = document.querySelector('meta[name="theme-color"]');
-    if (!meta) return;
-    const bg = getComputedStyle(document.body).getPropertyValue('--bg').trim();
-    if (bg) meta.setAttribute('content', bg);
-  })();
-  // If the user hasn't explicitly chosen a theme, follow live OS-level changes.
-  if (window.matchMedia) {
-    const mq = window.matchMedia('(prefers-color-scheme: light)');
-    const onChange = (e) => {
-      let saved = null;
-      try { saved = localStorage.getItem(THEME_KEY); } catch (_) {}
-      if (saved !== 'dark' && saved !== 'light') {
-        setTheme(e.matches ? 'light' : 'dark');
-      }
-    };
-    if (mq.addEventListener) mq.addEventListener('change', onChange);
-    else if (mq.addListener) mq.addListener(onChange);
   }
 
   // ---- Add phase ----
