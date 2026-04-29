@@ -111,15 +111,28 @@ body {
 }
 
 .app {
-  max-width: 560px;
+  width: 100%;
+  /* Desktop reading width — 860px on wide screens, full width on phones. */
+  max-width: 860px;
   margin: 0 auto;
   padding: 20px 16px 40px;
   display: grid;
   gap: 14px;
+  /* The two guards below are critical to prevent the goal-mode scenarios
+     table (min-width: 720px) from pushing the page wider than the viewport
+     on phones:
+       - min-width: 0 lets the grid container itself shrink past its
+         children's intrinsic widths.
+       - overflow-x: hidden is the last-resort safety net so absolutely
+         nothing in the descendants can produce horizontal page scroll. */
+  min-width: 0;
+  overflow-x: hidden;
 }
 
 .app__header {
   padding: 8px 4px 4px;
+  padding-right: 56px;            /* room for the fixed theme toggle */
+  min-width: 0;                   /* allow the title to shrink/wrap */
 }
 .app__header h1 {
   margin: 0;
@@ -138,6 +151,11 @@ body {
   border-radius: var(--radius);
   padding: 18px;
   box-shadow: var(--shadow);
+  /* Each card is a direct grid item of .app — must opt out of the default
+     "min-width: auto" so wide content (the goal scenarios table, a wide
+     phase-list flex layout, etc.) never forces the card and the page
+     itself wider than the viewport. */
+  min-width: 0;
 }
 
 /* Balance */
@@ -199,7 +217,7 @@ body {
   color: var(--text);
   margin-left: 4px;
 }
-@media (min-width: 420px) {
+@media (min-width: 640px) {
   .balance__meta { grid-template-columns: repeat(3, 1fr); }
 }
 
@@ -558,10 +576,14 @@ input[type="range"]::-moz-range-thumb {
 
 .comparison__table-wrap {
   overflow-x: auto;
+  overflow-y: hidden;
   -webkit-overflow-scrolling: touch;
   margin: 0 -18px -18px;
   padding: 14px 18px 18px;
   border-top: 1px solid var(--border);
+  /* Explicit safety: the wrap is contained within its card and never
+     pushes the page wider. The wide table scrolls inside this box. */
+  max-width: 100%;
 }
 .comparison__table {
   width: 100%;
@@ -1107,7 +1129,7 @@ body[data-mode="goal"]     [data-mode-only="timeline"] { display: none !importan
   gap: 16px;
   grid-template-columns: 1fr;
 }
-@media (min-width: 480px) {
+@media (min-width: 640px) {
   .goal-target__head { grid-template-columns: 1.1fr 1fr; align-items: start; }
 }
 .goal-target__value {
@@ -1135,7 +1157,7 @@ body[data-mode="goal"]     [data-mode-only="timeline"] { display: none !importan
   border-top: 1px solid var(--border);
   padding-top: 14px;
 }
-@media (min-width: 480px) {
+@media (min-width: 640px) {
   .goal-target__income { border-top: 0; padding-top: 0; border-left: 1px solid var(--border); padding-left: 16px; }
 }
 .goal-target__income-value {
@@ -1194,8 +1216,10 @@ body[data-mode="goal"]     [data-mode-only="timeline"] { display: none !importan
   margin-top: 2px;
 }
 
-/* Goal scenarios table — wider for 7 columns, scroll fade hint, stacked cells */
-.goal-table { min-width: 760px; }
+/* Goal scenarios table — wide enough for 7 columns yet still fits cleanly
+   inside an 860px desktop card without scrolling. On phones it scrolls
+   horizontally inside its wrapper (never pushing the page wider). */
+.goal-table { min-width: 720px; }
 .goal-table tbody tr {
   cursor: pointer;
   transition: background 0.15s;
@@ -1445,7 +1469,7 @@ body[data-mode="goal"]     [data-mode-only="timeline"] { display: none !importan
   grid-template-columns: repeat(2, 1fr);
   gap: 8px;
 }
-@media (min-width: 480px) {
+@media (min-width: 640px) {
   .goal-detail__stats { grid-template-columns: repeat(4, 1fr); }
 }
 .goal-stat {
@@ -1528,7 +1552,7 @@ body[data-mode="goal"]     [data-mode-only="timeline"] { display: none !importan
   grid-template-columns: repeat(2, 1fr);
   gap: 8px;
 }
-@media (min-width: 480px) {
+@media (min-width: 640px) {
   .goal-whatif__stats { grid-template-columns: repeat(3, 1fr); }
 }
 
@@ -1588,8 +1612,8 @@ body[data-mode="goal"]     [data-mode-only="timeline"] { display: none !importan
 [data-theme="dark"]  .theme-icon--moon { display: block; }
 [data-theme="light"] .theme-icon--sun  { display: block; }
 
-/* Reserve space at the top so the fixed toggle never overlaps the header */
-.app__header { padding-right: 56px; }
+/* (padding-right reservation for the fixed theme toggle is now part of the
+   primary .app__header rule near the top of the file) */
 
 /* Theme-adaptive SVG gradient stops used in the timeline-mode area chart.
    Inline SVG can pick up CSS custom properties via the `class` attribute. */
