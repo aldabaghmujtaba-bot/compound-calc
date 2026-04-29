@@ -120,6 +120,16 @@
   const fmtReal = (n) => '~' + fmtCurrency(n);
   const fmtRealShort = (n) => '~' + fmtCurrencyShort(n);
 
+  // Inflate a "today's $" amount forward to what it costs at year `years`.
+  // inflated = nominal * (1 + i/100)^years
+  const inflatedAmount = (amount, inflationPct, years) => {
+    if (!isFinite(amount)) return 0;
+    const i = Math.max(0, inflationPct || 0);
+    const y = Math.max(0, years || 0);
+    if (i <= 0 || y <= 0) return amount;
+    return amount * Math.pow(1 + i / 100, y);
+  };
+
   // ---- Compound interest engine (month-by-month simulation) ----
   function simulate(principal, monthly, annualRate, freq, years) {
     const r = annualRate / 100;
@@ -594,6 +604,100 @@
       `<g class="x-axis">${xAxis}</g>`;
   }
 
+  // ---- Scenario comparison helpers ----
+
+  // Returns an array of 3 phase variants: [lower, current, higher]
+  // Each variant has `_label` (for the strip header) and `_current` flag on the middle.
+  function phaseScenarios(phase) {
+    if (phase.type === 'coast') {
+      const y = Math.max(0, phase.years || 0);
+      const lo = Math.max(1, y - 5);
+      const hi = y + 5;
+      const yearWord = (n) => `${n} yr${n === 1 ? '' : 's'}`;
+      return [
+        { ...phase, years: lo, _label: yearWord(lo) },
+        { ...phase, years: y,  _label: yearWord(y), _current: true },
+        { ...phase, years: hi, _label: yearWord(hi) },
+      ];
+    }
+    // contribute / withdraw — vary amount by ±50%
+    const a = Math.max(0, phase.amount || 0);
+    const lo = a * 0.5;
+    const hi = a * 1.5;
+    const lbl = (v) => `${fmtCurrency(v)}/mo`;
+    return [
+      { ...phase, amount: lo, _label: lbl(lo) },
+      { ...phase, amount: a,  _label: lbl(a), _current: true },
+      { ...phase, amount: hi, _label: lbl(hi) },
+    ];
+  }
+
+  // Run simulateTimeline on a single phase to get its nominal ending balance.
+  function phaseEndBalance(startBalance, phase, rate, freq) {
+    const r = simulateTimeline(startBalance, [phase], rate, freq, 0);
+    return r.finalBalance;
+  }
+
+  function renderCompareStripInner(phase, startBalance, rate, freq) {
+    const variants = phaseScenarios(phase);
+    const ends = variants.map((v) => phaseEndBalance(startBalance, v, rate, freq));
+    const currentEnd = ends[1];
+    const isWithdraw = phase.type === 'withdraw';
+
+    let html = '';
+    variants.forEach((v, i) => {
+      const end = ends[i];
+      let cls = 'cmp-card';
+      let sub;
+      if (v._current) {
+        cls += ' cmp-card--current';
+        sub = 'current';
+      } else {
+        const diff = end - currentEnd;
+        const baseAbs = Math.max(1, Math.abs(currentEnd));
+        const pct = (Math.abs(diff) / baseAbs) * 100;
+        if (diff > 0.5) {
+          cls += ' cmp-card--better';
+          sub = `↑ ${pct < 1 ? pct.toFixed(1) : pct.toFixed(0)}%`;
+        } else if (diff < -0.5) {
+          cls += ' cmp-card--worse';
+          sub = `↓ ${pct < 1 ? pct.toFixed(1) : pct.toFixed(0)}%`;
+        } else {
+          sub = '—';
+        }
+      }
+      // Withdraw: replace the sub with a growing/shrinking indicator on EVERY card
+      if (isWithdraw) {
+        const grew = end > startBalance + 0.5;
+        const shrank = end < startBalance - 0.5;
+        sub = grew ? '↑ growing' : shrank ? '↓ shrinking' : '→ flat';
+      }
+      html +=
+        `<div class="${cls}">` +
+          `<span class="cmp-card__label">${escapeHtml(v._label)}</span>` +
+          `<strong class="cmp-card__value">${fmtCurrencyShort(end)}</strong>` +
+          `<span class="cmp-card__sub">${escapeHtml(sub)}</span>` +
+        `</div>`;
+    });
+    return html;
+  }
+
+  function compareTitleFor(phase) {
+    if (phase.type === 'coast') return 'If you coast longer or shorter';
+    if (phase.type === 'withdraw') return 'If you withdraw more or less';
+    return 'If you contribute more or less';
+  }
+
+  // Inflation-adjusted withdrawal hint: "what $X today costs by year Y"
+  function renderInflationHintHTML(phase, phaseResult) {
+    const startYear = phaseResult ? (phaseResult.startYear || 0) : 0;
+    const today = Math.max(0, phase.amount || 0);
+    if (startYear < 0.5 || (state.inflation || 0) <= 0 || today <= 0) return '';
+    const inflated = inflatedAmount(today, state.inflation, startYear);
+    const yr = Math.round(startYear);
+    return `<strong>${fmtReal(inflated)}/mo</strong> <em>— what ${fmtCurrency(today)}/mo today costs by year ${yr}</em>`;
+  }
+
   // ---- Phase cards ----
   function renderPhases(result) {
     const phases = state.phases;
@@ -639,6 +743,9 @@
                   `<span>$</span>` +
                   `<input type="text" data-field="amount" inputmode="decimal" autocomplete="off" value="${formatThousands(p.amount || 0)}" />` +
                 `</div>` +
+                (p.type === 'withdraw'
+                  ? `<p class="phase-field__hint" data-inflation-hint>${renderInflationHintHTML(p, r)}</p>`
+                  : '') +
               `</div>`
             ) : '') +
           `</div>` +
@@ -659,6 +766,12 @@
               `<div class="phase__summary-row"><span>Cash flow</span><strong>$0 (coast)</strong></div>`
             )) +
             `<div class="phase__summary-row"><span>Interest earned</span><strong>${fmtCurrency(r.interest)}</strong></div>` +
+          `</div>` +
+          `<div class="phase__compare" data-compare>` +
+            `<p class="phase__compare-title">${escapeHtml(compareTitleFor(p))}</p>` +
+            `<div class="phase__compare-grid" data-compare-grid>` +
+              renderCompareStripInner(p, r.startBalance || 0, state.rate, state.freq) +
+            `</div>` +
           `</div>` +
         `</div>`;
     });
@@ -744,6 +857,20 @@
         const strong = interestRow.querySelector('strong');
         if (strong) strong.textContent = fmtCurrency(r.interest);
       }
+      // Inflation-adjusted withdrawal hint (only present on withdraw phases)
+      const hint = card.querySelector('[data-inflation-hint]');
+      if (hint && p.type === 'withdraw') {
+        hint.innerHTML = renderInflationHintHTML(p, r);
+      }
+      // Scenario comparison strip — re-render its three cards
+      const grid = card.querySelector('[data-compare-grid]');
+      if (grid) {
+        grid.innerHTML = renderCompareStripInner(p, r.startBalance || 0, state.rate, state.freq);
+      }
+      // Update the comparison title in case the user just changed phase type
+      // (setPhaseType triggers full recalc, but defend anyway)
+      const title = card.querySelector('.phase__compare-title');
+      if (title) title.textContent = compareTitleFor(p);
     });
   }
 
