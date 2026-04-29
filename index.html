@@ -19,7 +19,44 @@
 
   <link rel="stylesheet" href="styles.css" />
 </head>
-<body data-mode="simple">
+<body data-mode="simple" data-theme="dark">
+  <script>
+    // Theme bootstrap — runs before any visible content paints to prevent a
+    // flash of the wrong theme on first load. Reads localStorage first, then
+    // falls back to the OS-level prefers-color-scheme. Same value is set on
+    // both <html> and <body> so html-level backgrounds (visible during iOS
+    // rubber-band) match the theme.
+    (function () {
+      try {
+        var saved = localStorage.getItem('compound-theme');
+        var theme = (saved === 'light' || saved === 'dark') ? saved
+          : (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+        document.documentElement.setAttribute('data-theme', theme);
+        document.body.setAttribute('data-theme', theme);
+        // Sync the meta theme-color so the iOS status bar / Android URL bar
+        // tint matches the active theme on first paint. Reads --bg from CSS
+        // so there's no hardcoded color here.
+        var meta = document.querySelector('meta[name="theme-color"]');
+        if (meta) {
+          var bg = getComputedStyle(document.body).getPropertyValue('--bg').trim();
+          if (bg) meta.setAttribute('content', bg);
+        }
+      } catch (e) { /* localStorage unavailable — keep default */ }
+    })();
+  </script>
+
+  <button id="themeToggle" class="theme-toggle" type="button" aria-label="Toggle dark/light theme">
+    <!-- Sun (shown in light mode → tap to switch to dark) -->
+    <svg class="theme-icon theme-icon--sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <circle cx="12" cy="12" r="4"/>
+      <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/>
+    </svg>
+    <!-- Moon (shown in dark mode → tap to switch to light) -->
+    <svg class="theme-icon theme-icon--moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+    </svg>
+  </button>
+
   <main class="app">
     <header class="app__header">
       <h1>Compound Interest</h1>

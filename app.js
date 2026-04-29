@@ -618,8 +618,8 @@
     svg.innerHTML =
       `<defs>
         <linearGradient id="${gradId}" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stop-color="#8cf0c4" stop-opacity="0.55"/>
-          <stop offset="100%" stop-color="#6ea8ff" stop-opacity="0.05"/>
+          <stop offset="0%"   class="tl-grad-top"    stop-opacity="0.55"/>
+          <stop offset="100%" class="tl-grad-bottom" stop-opacity="0.05"/>
         </linearGradient>
       </defs>` +
       `<g class="bands">${bands}</g>` +
@@ -1317,6 +1317,52 @@
   els.modeBtns.forEach((btn) => {
     btn.addEventListener('click', () => setMode(btn.getAttribute('data-mode-btn')));
   });
+
+  // ---- Theme toggle ----
+  // Theme is bootstrapped by an inline script in index.html (before paint) so
+  // we just toggle from whatever was set there and persist the preference.
+  const THEME_KEY = 'compound-theme';
+  function setTheme(theme) {
+    if (theme !== 'dark' && theme !== 'light') return;
+    document.documentElement.setAttribute('data-theme', theme);
+    document.body.setAttribute('data-theme', theme);
+    try { localStorage.setItem(THEME_KEY, theme); } catch (_) { /* ignore */ }
+    // Update the meta theme-color so the iOS status bar / Android URL bar
+    // tint matches. We read the resolved --bg from CSS to avoid hardcoding.
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) {
+      const bg = getComputedStyle(document.body).getPropertyValue('--bg').trim();
+      if (bg) meta.setAttribute('content', bg);
+    }
+  }
+  const themeToggleBtn = document.getElementById('themeToggle');
+  if (themeToggleBtn) {
+    themeToggleBtn.addEventListener('click', () => {
+      const current = document.body.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
+      setTheme(current === 'dark' ? 'light' : 'dark');
+    });
+  }
+  // Sync meta theme-color on initial load (the inline bootstrap already set
+  // the data-theme attribute, but the meta tag still reflects the dark default).
+  (function syncMetaThemeColor() {
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (!meta) return;
+    const bg = getComputedStyle(document.body).getPropertyValue('--bg').trim();
+    if (bg) meta.setAttribute('content', bg);
+  })();
+  // If the user hasn't explicitly chosen a theme, follow live OS-level changes.
+  if (window.matchMedia) {
+    const mq = window.matchMedia('(prefers-color-scheme: light)');
+    const onChange = (e) => {
+      let saved = null;
+      try { saved = localStorage.getItem(THEME_KEY); } catch (_) {}
+      if (saved !== 'dark' && saved !== 'light') {
+        setTheme(e.matches ? 'light' : 'dark');
+      }
+    };
+    if (mq.addEventListener) mq.addEventListener('change', onChange);
+    else if (mq.addListener) mq.addListener(onChange);
+  }
 
   // ---- Add phase ----
   els.addPhaseBtn.addEventListener('click', addPhase);
