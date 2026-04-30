@@ -1,5 +1,5 @@
 /* Compound Interest Calculator — service worker */
-const VERSION = 'v1.5.7';
+const VERSION = 'v1.5.8';
 const CACHE = `compound-${VERSION}`;
 
 const ASSETS = [

@@ -69,6 +69,24 @@
       <button type="button" role="radio" aria-checked="false" data-mode-btn="goal" class="mode-btn">Goal</button>
     </div>
 
+    <div class="toolbar" role="toolbar" aria-label="Plan actions">
+      <button type="button" class="toolbar-btn" id="shareBtn" aria-label="Share plan as link">
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
+          <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+        </svg>
+        <span>Share plan</span>
+      </button>
+      <button type="button" class="toolbar-btn" id="printBtn" aria-label="Print or save as PDF">
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <polyline points="6 9 6 2 18 2 18 9"/>
+          <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/>
+          <rect x="6" y="14" width="12" height="8"/>
+        </svg>
+        <span>Print</span>
+      </button>
+    </div>
+
     <section class="card balance" data-mode-only="simple" aria-live="polite">
       <p class="balance__label">Final balance</p>
       <p class="balance__value" id="finalBalance">$0</p>
@@ -415,6 +433,16 @@
   </main>
 
   <div class="tooltip" id="tooltip" role="status" aria-live="polite" hidden></div>
+
+  <!-- Toast (Share confirmation) -->
+  <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+  <!-- Print-only footer with the shareable URL -->
+  <footer class="print-footer" id="printFooter" aria-hidden="true">
+    <p class="print-footer__title">Compound Interest Calculator</p>
+    <p class="print-footer__url" id="printFooterUrl">—</p>
+    <p class="print-footer__note">All projections use the displayed rate / inflation / compounding settings.</p>
+  </footer>
 
   <script src="app.js" defer></script>
 </body>

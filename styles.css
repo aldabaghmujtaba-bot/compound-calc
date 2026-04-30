@@ -1674,6 +1674,72 @@ body[data-mode="goal"]     [data-mode-only="timeline"] { display: none !importan
   .goal-whatif__inputs { grid-template-columns: 1fr; }
 }
 
+/* Toolbar — sits below the mode toggle, right-aligned share/print buttons */
+.toolbar {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: -4px;
+  flex-wrap: wrap;
+}
+.toolbar-btn {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+  min-height: 36px;
+  letter-spacing: 0.01em;
+  transition: color 0.18s, border-color 0.18s, background 0.18s;
+}
+.toolbar-btn:hover {
+  color: var(--text);
+  border-color: var(--accent);
+  background: rgba(var(--accent-rgb), 0.05);
+}
+.toolbar-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.toolbar-btn:active { transform: translateY(1px); }
+.toolbar-btn svg { flex-shrink: 0; }
+
+/* Toast — brief confirmation message, appears bottom-center */
+.toast {
+  position: fixed;
+  bottom: max(20px, env(safe-area-inset-bottom));
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--accent-2);
+  color: var(--on-accent);
+  padding: 10px 18px;
+  border-radius: 999px;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  box-shadow: var(--shadow);
+  z-index: 1100;
+  pointer-events: none;
+  white-space: nowrap;
+  max-width: 90vw;
+  animation: toast-in 0.18s ease-out;
+}
+@keyframes toast-in {
+  from { transform: translate(-50%, 14px); opacity: 0; }
+  to   { transform: translate(-50%, 0);    opacity: 1; }
+}
+
+/* Print footer — hidden on screen, shown in print only */
+.print-footer { display: none; }
+
 /* Theme toggle (sun/moon icon, fixed top-right of viewport) */
 .theme-toggle {
   /* Fallback first — plain values work in every browser. If the env()/calc()
@@ -1733,6 +1799,216 @@ body[data-mode="goal"]     [data-mode-only="timeline"] { display: none !importan
    Inline SVG can pick up CSS custom properties via the `class` attribute. */
 .tl-grad-top    { stop-color: var(--contrib); }
 .tl-grad-bottom { stop-color: var(--principal); }
+
+/* ============================================================
+   PRINT STYLESHEET
+   Goal: a clean black-on-white financial summary that includes
+   ALL three modes' content at once (Simple + Timeline + Goal),
+   collapsed sections expanded, interactive controls hidden,
+   and the shareable URL printed as a footer.
+   ============================================================ */
+@media print {
+  @page { margin: 14mm; }
+
+  /* Reset chrome we don't want on paper */
+  .mode-toggle,
+  .toolbar,
+  .theme-toggle,
+  .tooltip,
+  .toast,
+  .add-phase,
+  .phase__actions,
+  .goal-detail__close,
+  .row-chevron,
+  input[type="range"],
+  .range-ticks {
+    display: none !important;
+  }
+
+  /* Force white background + black text regardless of theme. We override the
+     theme variables so all inheriting styles flip automatically. */
+  :root,
+  [data-theme="dark"],
+  [data-theme="light"] {
+    --bg: #ffffff;
+    --bg-2: #ffffff;
+    --card: #ffffff;
+    --card-2: #ffffff;
+    --text: #000000;
+    --muted: #555555;
+    --border: #cccccc;
+    --shadow: none;
+    --shadow-strong: rgba(0, 0, 0, 0.25);
+    --shadow-rgb: 0, 0, 0;
+    --accent: #000000;
+    --accent-2: #000000;
+    --principal: #000000;
+    --contrib: #000000;
+    --interest: #000000;
+    --contribute: #000000;
+    --coast: #000000;
+    --withdraw: #000000;
+    --negative: #555555;
+    --on-accent: #ffffff;
+    --on-seg: #ffffff;
+    --on-seg-divider: #cccccc;
+    --accent-rgb: 0, 0, 0;
+    --accent-2-rgb: 0, 0, 0;
+    --contrib-rgb: 0, 0, 0;
+    --interest-rgb: 80, 80, 80;
+    --negative-rgb: 80, 80, 80;
+  }
+
+  body {
+    background: white !important;
+    color: black !important;
+    overflow-x: visible !important;
+    /* Body backdrop gradients off */
+    background-image: none !important;
+  }
+  .app {
+    max-width: none !important;
+    padding: 0 !important;
+    overflow-x: visible !important;
+  }
+
+  /* Show every mode's sections at once — undo the data-mode visibility rules.
+     Higher specificity than `body[data-mode="x"] [data-mode-only="y"]`. */
+  body[data-mode] [data-mode-only="simple"],
+  body[data-mode] [data-mode-only="timeline"],
+  body[data-mode] [data-mode-only="goal"],
+  body[data-mode] [data-mode-only="any"] {
+    display: block !important;
+  }
+
+  /* Cards: clean borders, no shadow, avoid mid-section page breaks */
+  .card {
+    background: white !important;
+    border: 1px solid #ccc !important;
+    box-shadow: none !important;
+    page-break-inside: avoid;
+    break-inside: avoid;
+    margin-bottom: 12px !important;
+  }
+
+  /* Major sections start fresh on a page when possible (but don't force) */
+  .goal-hero,
+  .timeline-summary,
+  .balance,
+  .phases-card { page-break-before: auto; }
+
+  /* Headings + content all in black */
+  h1, h2, h3, p, span, strong, em, td, th, label, li, div {
+    color: black !important;
+  }
+  .balance__label, .balance__meta, .balance__real, .balance__real em,
+  .field label, .field-hint, .cmp-card__label, .cmp-card__sub,
+  .cmp-card__real, .cmp-card__inflated, .cell-meta, .runway,
+  .phase__age, .goal-stat__label, .goal-stat__sub,
+  .chart-card__hint, .comparison__hint, .legend, .tl-bar-axis,
+  .goal-target__real, .goal-target__income-note, .goal-detail__legend,
+  .goal-whatif__verdict-sub, .goal-hero__kicker, .goal-hero__stat-label,
+  .goal-hero__stat-sub, .breakdown__real, small {
+    color: #555 !important;
+  }
+
+  /* Inputs: show value as static text, no input chrome */
+  .input-prefix, .input-suffix {
+    background: white !important;
+    border: 1px solid #ccc !important;
+  }
+  input[type="text"] {
+    background: transparent !important;
+    color: black !important;
+  }
+
+  /* Mode toggle / phase type buttons / segments — force visible coloring off */
+  .seg, .phase__type {
+    background: white !important;
+    border: 1px solid #ccc !important;
+  }
+  .seg__btn, .phase__type-btn {
+    background: white !important;
+    color: #555 !important;
+  }
+  .seg__btn.is-active, .phase__type-btn.is-active {
+    background: #000 !important;
+    color: white !important;
+  }
+
+  /* Charts: SVGs adapt automatically since they reference CSS vars (now flipped above).
+     Provide a sane border so the chart frame is visible. */
+  .chart-wrap, .goal-detail__chart-wrap {
+    border: 1px solid #ddd !important;
+    background: white !important;
+  }
+  .chart, .goal-detail__chart { background: white !important; }
+
+  /* Timeline bar segments — show with shaded patterns since color is gone */
+  .tl-seg--contribute { background: #d0d0d0 !important; }
+  .tl-seg--coast      { background: #aaaaaa !important; }
+  .tl-seg--withdraw   { background: #707070 !important; }
+  .tl-seg              { color: black !important; }
+
+  /* Hit/miss row coloring: subtle gray tints in print */
+  .goal-table tr.is-hit  td { background: #f3f3f3 !important; }
+  .goal-table tr.is-miss td { background: #fafafa !important; }
+  .goal-table tr.is-hit  td:first-child,
+  .goal-table tr.is-miss td:first-child {
+    border-left: 3px solid #000 !important;
+  }
+  .result-pill {
+    background: white !important;
+    border: 1px solid #888 !important;
+    color: black !important;
+  }
+  .vs-target--pos, .vs-target--neg, .runway--forever, .runway--finite {
+    color: black !important;
+  }
+
+  /* Goal scenarios table: print full-width without scroll */
+  .comparison__table-wrap {
+    overflow: visible !important;
+    background: none !important;
+    border-top: 1px solid #ccc !important;
+  }
+  .goal-table { min-width: 0 !important; font-size: 10px !important; }
+  .goal-table th, .goal-table td { padding: 6px 5px !important; }
+
+  /* Print footer: shown only in print, sticks at the page bottom */
+  .print-footer {
+    display: block !important;
+    margin-top: 16px;
+    padding-top: 10px;
+    border-top: 1px solid #ccc;
+    text-align: center;
+    color: #555 !important;
+    page-break-inside: avoid;
+  }
+  .print-footer__title {
+    margin: 0 0 4px;
+    font-size: 11px;
+    font-weight: 700;
+    color: #000 !important;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+  .print-footer__url {
+    margin: 0 0 4px;
+    font-size: 9px;
+    word-break: break-all;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    color: #333 !important;
+  }
+  .print-footer__note {
+    margin: 0;
+    font-size: 9px;
+    color: #888 !important;
+  }
+
+  /* Hide elements that have no value on paper */
+  .app__footer { display: none !important; }
+}
 
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; animation: none !important; }

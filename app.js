@@ -40,6 +40,12 @@
 
     modeBtns: document.querySelectorAll('[data-mode-btn]'),
 
+    // Toolbar
+    shareBtn: $('shareBtn'),
+    printBtn: $('printBtn'),
+    toast: $('toast'),
+    printFooterUrl: $('printFooterUrl'),
+
     // Goal mode
     currentAge: $('currentAge'),               // shared with timeline
     goalIncome: $('goalIncome'),
@@ -1739,10 +1745,236 @@
     else recalcGoal();
   }, 100));
 
+  // ---- Share + Print: URL state encoding ----
+  // Compact param keys keep the shareable URL short. Phases use a custom
+  // packed form: type:years:amount:encodedLabel joined by commas.
+  const PHASE_TYPE_CODE = { contribute: 'c', coast: 'o', withdraw: 'w' };
+  const PHASE_TYPE_DECODE = { c: 'contribute', o: 'coast', w: 'withdraw' };
+
+  function encodePhases(phases) {
+    return phases.map((p) => {
+      const t = PHASE_TYPE_CODE[p.type] || 'c';
+      const y = +p.years || 0;
+      const a = +p.amount || 0;
+      const lbl = encodeURIComponent(p.label || '');
+      return `${t}:${y}:${a}:${lbl}`;
+    }).join(',');
+  }
+  function decodePhases(str) {
+    if (!str) return null;
+    return str.split(',').map((chunk) => {
+      const parts = chunk.split(':');
+      return {
+        id: newPhaseId(),
+        type: PHASE_TYPE_DECODE[parts[0]] || 'contribute',
+        years: Math.max(0, parseFloat(parts[1]) || 0),
+        amount: Math.max(0, parseFloat(parts[2]) || 0),
+        label: decodeURIComponent(parts[3] || ''),
+      };
+    });
+  }
+
+  function buildShareURL() {
+    // Make sure state reflects what's actually in the inputs right now
+    if (state.mode === 'simple') readInputs();
+    else readSharedInputs();
+    if (state.mode === 'goal') readGoalInputs();
+
+    const p = new URLSearchParams();
+    p.set('m', state.mode);
+    p.set('p', String(state.principal));
+    p.set('mo', String(state.monthly));
+    p.set('r', String(state.rate));
+    p.set('inf', String(state.inflation));
+    p.set('y', String(state.years));
+    p.set('f', String(state.freq));
+    if (state.currentAge != null) p.set('a', String(state.currentAge));
+    p.set('gi', String(state.goalIncome));
+    p.set('gra', String(state.goalRetireAge));
+    p.set('gry', String(state.goalRetireYears));
+    if (state.phases && state.phases.length) p.set('ph', encodePhases(state.phases));
+    const theme = document.body.getAttribute('data-theme');
+    if (theme === 'dark' || theme === 'light') p.set('th', theme);
+    return window.location.origin + window.location.pathname + '?' + p.toString();
+  }
+
+  function loadFromURL() {
+    let params;
+    try {
+      params = new URLSearchParams(window.location.search);
+    } catch (_) { return false; }
+    if (![...params.keys()].length) return false;
+
+    try {
+      // Numbers — use parseFloat with sensible clamping
+      const setNum = (key, max, min) => {
+        if (!params.has(key)) return null;
+        const v = parseFloat(params.get(key));
+        if (!isFinite(v)) return null;
+        return Math.max(min ?? 0, Math.min(max ?? Infinity, v));
+      };
+
+      const principal = setNum('p', 1e12);
+      if (principal != null) {
+        state.principal = principal;
+        els.principal.value = formatThousands(principal);
+      }
+      const monthly = setNum('mo', 1e9);
+      if (monthly != null) {
+        state.monthly = monthly;
+        els.monthly.value = formatThousands(monthly);
+      }
+      const rate = setNum('r', 50);
+      if (rate != null) {
+        state.rate = rate;
+        els.rate.value = String(rate);
+      }
+      const inflation = setNum('inf', 10);
+      if (inflation != null) {
+        state.inflation = inflation;
+        els.inflation.value = String(inflation);
+        if (els.inflationOut) {
+          els.inflationOut.textContent = Number.isInteger(inflation) ? inflation.toFixed(0) : inflation.toFixed(1);
+        }
+      }
+      const years = setNum('y', 40, 1);
+      if (years != null) {
+        state.years = Math.round(years);
+        els.years.value = String(state.years);
+        if (els.yearsOut) els.yearsOut.textContent = String(state.years);
+      }
+      if (params.has('f')) {
+        const f = parseInt(params.get('f'), 10);
+        if (f === 1 || f === 4 || f === 12) {
+          state.freq = f;
+          els.seg.forEach((b) => {
+            const active = parseInt(b.getAttribute('data-value'), 10) === f;
+            b.classList.toggle('is-active', active);
+            b.setAttribute('aria-checked', active ? 'true' : 'false');
+          });
+        }
+      }
+      if (params.has('a')) {
+        const a = parseFloat(params.get('a'));
+        if (isFinite(a) && a > 0) {
+          state.currentAge = Math.min(120, a);
+          els.currentAge.value = String(Math.round(state.currentAge));
+        }
+      } else {
+        state.currentAge = null;
+        if (els.currentAge) els.currentAge.value = '';
+      }
+      const gi = setNum('gi', 1e9);
+      if (gi != null) {
+        state.goalIncome = gi;
+        els.goalIncome.value = formatThousands(gi);
+      }
+      const gra = setNum('gra', 120);
+      if (gra != null) {
+        state.goalRetireAge = gra;
+        els.goalRetireAge.value = String(Math.round(gra));
+      }
+      const gry = setNum('gry', 80);
+      if (gry != null) {
+        state.goalRetireYears = gry;
+        els.goalRetireYears.value = String(Math.round(gry));
+      }
+      if (params.has('ph')) {
+        const phases = decodePhases(params.get('ph'));
+        if (phases && phases.length) state.phases = phases;
+      }
+      if (params.has('th')) {
+        const t = params.get('th');
+        if (t === 'dark' || t === 'light') {
+          document.documentElement.setAttribute('data-theme', t);
+          document.body.setAttribute('data-theme', t);
+          try { localStorage.setItem('compound-theme', t); } catch (_) {}
+        }
+      }
+      if (params.has('m')) {
+        const m = params.get('m');
+        if (m === 'simple' || m === 'timeline' || m === 'goal') {
+          state.mode = m;
+          document.body.setAttribute('data-mode', m);
+          els.modeBtns.forEach((b) => {
+            const active = b.getAttribute('data-mode-btn') === m;
+            b.classList.toggle('is-active', active);
+            b.setAttribute('aria-checked', active ? 'true' : 'false');
+          });
+          const principalLabel = document.getElementById('principalLabel');
+          if (principalLabel) {
+            principalLabel.textContent =
+              m === 'timeline' ? 'Starting balance' :
+              m === 'goal'     ? 'Current savings' :
+                                 'Initial principal';
+          }
+        }
+      }
+      return true;
+    } catch (e) {
+      // Bad URL params — leave state at defaults
+      return false;
+    }
+  }
+
+  // ---- Toast ----
+  let toastTimer = null;
+  function showToast(msg) {
+    if (!els.toast) return;
+    els.toast.textContent = msg;
+    els.toast.hidden = false;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { els.toast.hidden = true; }, 2000);
+  }
+
+  // ---- Share button ----
+  async function copyShareURL() {
+    const url = buildShareURL();
+    // Reflect the current state in the address bar so refresh / bookmark
+    // captures the same plan, without adding a history entry.
+    try { window.history.replaceState(null, '', url); } catch (_) {}
+    let copied = false;
+    if (navigator.clipboard && window.isSecureContext) {
+      try { await navigator.clipboard.writeText(url); copied = true; } catch (_) {}
+    }
+    if (!copied) {
+      // Fallback for non-secure contexts (http://) and older browsers
+      const ta = document.createElement('textarea');
+      ta.value = url;
+      ta.setAttribute('readonly', '');
+      ta.style.position = 'fixed';
+      ta.style.left = '-9999px';
+      document.body.appendChild(ta);
+      ta.select();
+      try { document.execCommand('copy'); copied = true; } catch (_) {}
+      document.body.removeChild(ta);
+    }
+    showToast(copied ? 'Link copied!' : 'Could not copy — URL is in the address bar');
+  }
+
+  // ---- Print: refresh the URL footer right before the print dialog opens ----
+  function syncPrintFooter() {
+    if (!els.printFooterUrl) return;
+    els.printFooterUrl.textContent = buildShareURL();
+  }
+  window.addEventListener('beforeprint', syncPrintFooter);
+
   // ---- Mode toggle ----
   els.modeBtns.forEach((btn) => {
     btn.addEventListener('click', () => setMode(btn.getAttribute('data-mode-btn')));
   });
+
+  // Wire the toolbar buttons
+  if (els.shareBtn) els.shareBtn.addEventListener('click', copyShareURL);
+  if (els.printBtn) {
+    els.printBtn.addEventListener('click', () => {
+      // Make sure the footer URL reflects the latest state even when print
+      // is fired from a button (some browsers don't fire beforeprint reliably
+      // for window.print() called by user code).
+      syncPrintFooter();
+      window.print();
+    });
+  }
 
   // ---- Theme toggle ----
   // Wired EARLY (right after mode-toggle) so it's independent of any
@@ -1953,6 +2185,11 @@
     }
   }
   updateInstallState();
+
+  // Restore state from ?p=...&mo=... URL params if present (lets users
+  // bookmark or share a specific plan). Runs before the initial recalc so
+  // the first render reflects the shared scenario, not the defaults.
+  loadFromURL();
 
   recalc();
 })();
