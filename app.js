@@ -881,6 +881,16 @@
                 `<input type="text" data-field="label" maxlength="40" autocomplete="off" placeholder="${PHASE_LABEL[p.type]}" value="${escapeHtml(p.label || '')}" />` +
               `</div>` +
             `</div>` +
+            // Optional hours/week — informational only, doesn't drive calcs.
+            // Sits below label, before years/amount, full-width so it gets
+            // its own row.
+            `<div class="phase-field phase-field--full">` +
+              `<label>Hours/week <span class="field-hint">(optional)</span></label>` +
+              `<div class="input-suffix">` +
+                `<input type="text" data-field="hours" inputmode="numeric" autocomplete="off" placeholder="" value="${p.hours != null ? p.hours : ''}" />` +
+                `<span>hrs</span>` +
+              `</div>` +
+            `</div>` +
             `<div class="phase-field">` +
               `<label>Years</label>` +
               `<div class="input-suffix">` +
@@ -918,6 +928,13 @@
               `<div class="phase__summary-row"><span>Cash flow</span><strong>$0 (coast)</strong></div>`
             )) +
             `<div class="phase__summary-row"><span>Interest earned</span><strong>${fmtCurrency(r.interest)}</strong></div>` +
+            // Hours-per-week badge row. Always rendered (so recalcTimelineOnly
+            // can update in place without DOM rebuilds), but `hidden` when
+            // the user hasn't set hours. data-row="hours" for direct lookup.
+            `<div class="phase__summary-row phase__summary-row--hours" data-row="hours"${(p.hours != null && p.hours > 0) ? '' : ' hidden'}>` +
+              `<span>Hours per week</span>` +
+              `<strong class="phase__hours-pill">${(p.hours != null && p.hours > 0) ? p.hours : '—'} hrs/week</strong>` +
+            `</div>` +
           `</div>` +
           `<div class="phase__compare" data-compare>` +
             `<p class="phase__compare-title">${escapeHtml(compareTitleFor(p))}</p>` +
@@ -944,6 +961,7 @@
       type: 'contribute',
       years: 10,
       amount: 1000,
+      hours: null,            // optional informational field; user fills in if relevant
     });
     recalc();
   }
@@ -966,6 +984,18 @@
     if (field === 'label') p.label = value;
     else if (field === 'years') p.years = Math.max(0, parseNumber(value));
     else if (field === 'amount') p.amount = Math.max(0, parseNumber(value));
+    else if (field === 'hours') {
+      // Optional informational field. Empty input → null (badge hidden).
+      // Numeric input clamped to 0–80; treat 0 as "not set" so the badge
+      // doesn't show for "0 hrs/week" which is just visual noise.
+      const v = (value || '').trim();
+      if (v === '') {
+        p.hours = null;
+      } else {
+        const h = parseFloat(v);
+        p.hours = (isFinite(h) && h > 0) ? Math.min(80, h) : null;
+      }
+    }
     recalcTimelineOnly();
   }
   function setPhaseType(id, type) {
@@ -1008,6 +1038,18 @@
       if (interestRow) {
         const strong = interestRow.querySelector('strong');
         if (strong) strong.textContent = fmtCurrency(r.interest);
+      }
+      // Hours/week pill — show/hide and refresh value without rebuilding the
+      // phase card (preserves input focus while typing in the hours field).
+      const hoursRow = sum.querySelector('[data-row="hours"]');
+      if (hoursRow) {
+        if (p.hours != null && p.hours > 0) {
+          hoursRow.hidden = false;
+          const pill = hoursRow.querySelector('.phase__hours-pill');
+          if (pill) pill.textContent = `${p.hours} hrs/week`;
+        } else {
+          hoursRow.hidden = true;
+        }
       }
       // Inflation-adjusted withdrawal hint (only present on withdraw phases)
       const hint = card.querySelector('[data-inflation-hint]');
@@ -1987,19 +2029,29 @@
       const y = +p.years || 0;
       const a = +p.amount || 0;
       const lbl = encodeURIComponent(p.label || '');
-      return `${t}:${y}:${a}:${lbl}`;
+      // 5th field: hours/week (blank string when null/0 — short URL, still
+      // round-trips because parts[4] === '' decodes to null below).
+      const h = (p.hours != null && p.hours > 0) ? p.hours : '';
+      return `${t}:${y}:${a}:${lbl}:${h}`;
     }).join(',');
   }
   function decodePhases(str) {
     if (!str) return null;
     return str.split(',').map((chunk) => {
       const parts = chunk.split(':');
+      // parts[4] is undefined for legacy 4-field URLs — treated as null hours
+      const hRaw = parts[4];
+      const hNum = parseFloat(hRaw);
+      const hours = (hRaw !== undefined && hRaw !== '' && isFinite(hNum) && hNum > 0)
+        ? Math.min(80, hNum)
+        : null;
       return {
         id: newPhaseId(),
         type: PHASE_TYPE_DECODE[parts[0]] || 'contribute',
         years: Math.max(0, parseFloat(parts[1]) || 0),
         amount: Math.max(0, parseFloat(parts[2]) || 0),
         label: decodeURIComponent(parts[3] || ''),
+        hours,
       };
     });
   }
@@ -2408,7 +2460,7 @@
 
   els.phasesList.addEventListener('blur', (e) => {
     if (!e.target.matches('[data-field]')) return;
-    // Light cleanup on blur for amount/years
+    // Light cleanup on blur for amount/years/hours
     const field = e.target.getAttribute('data-field');
     if (field === 'amount') {
       const n = parseNumber(e.target.value);
@@ -2416,6 +2468,15 @@
     } else if (field === 'years') {
       const n = parseNumber(e.target.value);
       e.target.value = String(n);
+    } else if (field === 'hours') {
+      // Preserve blank intent — don't coerce empty to "0". When numeric,
+      // clamp to 0–80 and round to a clean integer for display.
+      const v = (e.target.value || '').trim();
+      if (v === '') return;
+      const n = parseFloat(v);
+      e.target.value = isFinite(n) && n > 0
+        ? String(Math.round(Math.min(80, n)))
+        : '';
     }
   }, true);
 

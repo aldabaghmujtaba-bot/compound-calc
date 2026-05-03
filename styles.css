@@ -1402,6 +1402,22 @@ body[data-mode="goal"]     [data-mode-only="timeline"] { display: none !importan
 .phase__swr--caution { background: rgba(var(--interest-rgb), 0.18); color: var(--interest); }
 .phase__swr--risky   { background: rgba(var(--negative-rgb), 0.18); color: var(--negative); }
 
+/* Hours-per-week informational pill (shown only when phase has hours > 0).
+   Higher specificity than `.phase__summary-row strong` so the muted color
+   sticks without !important. */
+.phase__summary-row strong.phase__hours-pill {
+  display: inline-block;
+  padding: 2px 9px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+}
+
 /* Family panel — collapsible group of name+age inputs */
 .family-panel {
   background: var(--card-2);
