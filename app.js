@@ -46,6 +46,14 @@
     toast: $('toast'),
     printFooterUrl: $('printFooterUrl'),
 
+    // Shared lifespan + family inputs (any-mode)
+    lifespan: $('lifespan'),
+    familyToggle: $('familyToggle'),
+    familyBody: $('familyBody'),
+    familyList: $('familyList'),
+    familyCount: $('familyCount'),
+    addFamilyBtn: $('addFamily'),
+
     // Goal mode
     currentAge: $('currentAge'),               // shared with timeline
     goalIncome: $('goalIncome'),
@@ -118,6 +126,13 @@
     // and Timeline mode (decorating phase cards with absolute ages). null
     // means "not set" → Timeline shows years, Goal falls back to 35.
     currentAge: null,
+
+    // Expected lifespan (50–120). Drives the SWR horizon for withdraw phases.
+    lifespan: 90,
+
+    // Family members — shown alongside user age wherever ages are displayed.
+    // Each entry: { name: string, age: number|null }
+    family: [],
 
     // Goal-planner inputs
     goalIncome: 5000,        // monthly income needed (today's $)
@@ -540,11 +555,23 @@
     let axis = '';
     const ticks = chooseTicks(0, total);
     const showAges = state.currentAge != null && state.currentAge > 0;
+    const fam = (state.family || []).filter((f) => f && f.name && f.age != null && f.age >= 0);
     ticks.forEach((t) => {
       const pct = total > 0 ? (t / total) * 100 : 0;
-      const label = showAges
-        ? `age ${Math.round(state.currentAge + t)}`
-        : formatYearTick(t);
+      let label;
+      if (showAges) {
+        label = `age ${Math.round(state.currentAge + t)}`;
+        // Stack each family member on a sub-line under the user age. Use a
+        // 1–3 char prefix from the name to keep tick labels narrow.
+        if (fam.length) {
+          const famLabels = fam
+            .map((f) => `<span class="axis-fam">${escapeHtml(f.name.slice(0, 3))} ${Math.round(f.age + t)}</span>`)
+            .join('');
+          label += famLabels;
+        }
+      } else {
+        label = formatYearTick(t);
+      }
       axis += `<span style="left:${pct.toFixed(2)}%">${label}</span>`;
     });
     els.tlBarAxis.innerHTML = axis;
@@ -802,9 +829,34 @@
       const amountLabel = p.type === 'withdraw' ? 'Monthly withdrawal' : 'Monthly contribution';
       // Optional age annotation: only shown when the shared "Your current
       // age" input is set. Maps phase start/end years onto absolute ages.
-      const ageLine = (state.currentAge != null && state.currentAge > 0)
-        ? `<p class="phase__age">Age <strong>${Math.round(state.currentAge + r.startYear)}</strong> → <strong>${Math.round(state.currentAge + r.endYear)}</strong></p>`
-        : '';
+      // When family members are present, append a secondary muted line with
+      // each member's age range over the same phase span.
+      let ageLine = '';
+      if (state.currentAge != null && state.currentAge > 0) {
+        ageLine =
+          `<p class="phase__age">Age <strong>${Math.round(state.currentAge + r.startYear)}</strong> → <strong>${Math.round(state.currentAge + r.endYear)}</strong></p>`;
+        const famText = familyAgesRange(r.startYear, r.endYear);
+        if (famText) ageLine += `<p class="phase__family-ages">${famText}</p>`;
+      }
+      // Lifespan-aware SWR badge (withdraw phases only). Years remaining =
+      // lifespan − absolute age at phase start. Hidden when current age is
+      // unset (we can't compute an absolute age) or amount is 0.
+      let swrBadge = '';
+      if (p.type === 'withdraw' && (p.amount || 0) > 0
+          && state.currentAge != null && state.currentAge > 0) {
+        const yearsRemaining = Math.max(0,
+          (state.lifespan || 90) - (state.currentAge + (r.startYear || 0)));
+        const swr = calcSWR(p.amount || 0, r.startBalance || 0,
+          yearsRemaining, state.rate, state.inflation);
+        if (swr.rate > 0) {
+          const pct = (swr.rate * 100).toFixed(1);
+          const yrsTxt = Number.isInteger(yearsRemaining)
+            ? String(yearsRemaining)
+            : yearsRemaining.toFixed(1);
+          const tooltip = `${pct}% SWR · ${yrsTxt} years remaining · ${swr.level}`;
+          swrBadge = `<div class="phase__swr phase__swr--${swr.level}" title="${tooltip}" aria-label="${tooltip}">${pct}% SWR · ${yrsTxt} yrs · ${swr.level}</div>`;
+        }
+      }
       html +=
         `<div class="phase phase--${p.type}" data-phase="${p.id}">` +
           `<div class="phase__head">` +
@@ -821,6 +873,7 @@
             `</div>` +
           `</div>` +
           ageLine +
+          swrBadge +
           `<div class="phase__fields">` +
             `<div class="phase-field phase-field--full">` +
               `<label>Label (optional)</label>` +
@@ -995,6 +1048,10 @@
     renderTimelineChart(result);
   }
 
+  // Read all shared-across-modes inputs into state. Used by Timeline and
+  // Goal recalcs (Simple has its own readInputs that's a superset of this).
+  // Mode switches don't reset DOM input values, so calling this before each
+  // recalc guarantees state reflects whatever the user last typed in any tab.
   function readSharedInputs() {
     state.principal = Math.max(0, parseNumber(els.principal.value));
     state.rate = Math.max(0, parseNumber(els.rate.value));
@@ -1006,6 +1063,10 @@
       state.currentAge = (els.currentAge.value || '').trim() === '' || ageRaw <= 0
         ? null
         : Math.min(120, ageRaw);
+    }
+    if (els.lifespan) {
+      const lsRaw = parseFloat(els.lifespan.value);
+      state.lifespan = isFinite(lsRaw) ? Math.max(50, Math.min(120, lsRaw)) : 90;
     }
     // freq is updated by segmented click handler
   }
@@ -1077,6 +1138,118 @@
   // amount where real interest income equals the withdrawal so the real
   // balance never declines. Returns 0 when real return ≤ 0 (no perpetual
   // withdrawal possible — money must eventually deplete).
+  // Lifespan-aware Sustainable Withdrawal Rate. Returns the actual annual
+  // draw rate (monthly × 12 / startBalance) AND the maximum sustainable rate
+  // for that horizon using PV-of-annuity math at the real return — so the
+  // safe / caution / risky thresholds shrink as years remaining grow.
+  //   - safe:    actual ≤ 80% of max
+  //   - caution: actual ≤ max
+  //   - risky:   actual > max
+  function calcSWR(monthlyAmount, startBalance, yearsRemaining, ratePct, inflPct) {
+    const yr = Math.max(0, yearsRemaining || 0);
+    if (!isFinite(startBalance) || startBalance <= 0 || monthlyAmount <= 0) {
+      return { rate: 0, maxRate: 0, level: 'safe', yearsRemaining: yr };
+    }
+    const actualRate = (monthlyAmount * 12) / startBalance;
+    const i = Math.max(0, inflPct || 0);
+    const realAnnual = (1 + ratePct / 100) / (1 + i / 100) - 1;
+    let maxRate;
+    if (yr <= 0) {
+      maxRate = Infinity;
+    } else if (realAnnual <= 0) {
+      // Real return ≤ 0 → can only spread the principal evenly across years.
+      maxRate = 1 / yr;
+    } else {
+      // Standard PMT/PV ratio: annual_pmt / pv = r / (1 − (1+r)^−n)
+      maxRate = realAnnual / (1 - Math.pow(1 + realAnnual, -yr));
+    }
+    let level;
+    if (actualRate <= maxRate * 0.8) level = 'safe';
+    else if (actualRate <= maxRate) level = 'caution';
+    else level = 'risky';
+    return { rate: actualRate, maxRate, level, yearsRemaining: yr };
+  }
+
+  // Family encode / decode — packed `name:age` joined by commas, name URL-encoded.
+  function encodeFamily(family) {
+    if (!family || !family.length) return '';
+    return family
+      .filter((f) => (f && (f.name || f.age != null)))
+      .map((f) => `${encodeURIComponent(f.name || '')}:${f.age != null ? f.age : ''}`)
+      .join(',');
+  }
+  function decodeFamily(str) {
+    if (!str) return [];
+    return str.split(',').map((chunk) => {
+      const idx = chunk.indexOf(':');
+      const namePart = idx >= 0 ? chunk.slice(0, idx) : chunk;
+      const agePart = idx >= 0 ? chunk.slice(idx + 1) : '';
+      const ageRaw = parseFloat(agePart);
+      const age = isFinite(ageRaw) && ageRaw >= 0 ? Math.min(120, ageRaw) : null;
+      return { name: decodeURIComponent(namePart || ''), age };
+    });
+  }
+
+  function renderFamily() {
+    const list = state.family || [];
+    if (els.familyList) {
+      let html = '';
+      list.forEach((f, i) => {
+        const ageVal = f.age != null ? String(f.age) : '';
+        html +=
+          `<div class="family-entry" data-family-index="${i}" role="listitem">` +
+            `<div class="input-prefix">` +
+              `<input type="text" data-family-field="name" placeholder="Name" autocomplete="off" maxlength="20" value="${escapeHtml(f.name || '')}" />` +
+            `</div>` +
+            `<div class="input-suffix">` +
+              `<input type="text" data-family-field="age" inputmode="decimal" autocomplete="off" placeholder="Age" value="${escapeHtml(ageVal)}" />` +
+              `<span>yrs</span>` +
+            `</div>` +
+            `<button type="button" class="phase-icon-btn phase-icon-btn--del" data-family-action="delete" aria-label="Remove">×</button>` +
+          `</div>`;
+      });
+      els.familyList.innerHTML = html;
+    }
+    if (els.familyCount) {
+      els.familyCount.textContent = list.length > 0 ? `(${list.length})` : '';
+    }
+  }
+
+  function addFamilyMember() {
+    state.family = state.family || [];
+    state.family.push({ name: '', age: null });
+    renderFamily();
+    // Open the panel if it was collapsed so the user sees the new row
+    if (els.familyBody && els.familyToggle && els.familyBody.hidden) {
+      els.familyBody.hidden = false;
+      els.familyToggle.setAttribute('aria-expanded', 'true');
+    }
+    recalc();
+  }
+  function removeFamilyMember(i) {
+    if (!state.family || i < 0 || i >= state.family.length) return;
+    state.family.splice(i, 1);
+    renderFamily();
+    recalc();
+  }
+
+  // Compose the family-ages text shown alongside a user-age display.
+  // `at` is years from "today". Returns a pre-escaped joined string or ''.
+  function familyAgesAt(at) {
+    if (!state.family || !state.family.length) return '';
+    return state.family
+      .filter((f) => f && f.name && f.age != null && f.age >= 0)
+      .map((f) => `${escapeHtml(f.name)} ${Math.round((f.age || 0) + at)}`)
+      .join(' · ');
+  }
+  function familyAgesRange(start, end) {
+    if (!state.family || !state.family.length) return '';
+    return state.family
+      .filter((f) => f && f.name && f.age != null && f.age >= 0)
+      .map((f) => `${escapeHtml(f.name)} ${Math.round((f.age || 0) + start)} → ${Math.round((f.age || 0) + end)}`)
+      .join(' · ');
+  }
+
   function perpetualMonthlyWithdrawal(balanceAtRetire, yearsToRetire, ratePct, inflPct) {
     if (!isFinite(balanceAtRetire) || balanceAtRetire <= 0) return 0;
     const i = Math.max(0, inflPct || 0);
@@ -1586,6 +1759,18 @@
   // ---- Mode switching ----
   function setMode(mode) {
     if (mode !== 'simple' && mode !== 'timeline' && mode !== 'goal') return;
+    // Capture every shared-input value from the DOM into state BEFORE the
+    // mode change so anything the user typed in the previous tab carries
+    // over cleanly. (DOM values are preserved across mode switches anyway,
+    // but doing this explicitly prevents any future ordering bug from
+    // letting state drift behind the visible inputs.)
+    readSharedInputs();
+    if (state.mode === 'simple') {
+      // Capture simple-only fields too (monthly, years) before leaving
+      state.monthly = Math.max(0, parseNumber(els.monthly.value));
+      state.years = Math.min(40, Math.max(1, parseInt(els.years.value, 10) || 1));
+    }
+
     state.mode = mode;
     document.body.setAttribute('data-mode', mode);
     els.modeBtns.forEach((b) => {
@@ -1593,7 +1778,7 @@
       b.classList.toggle('is-active', active);
       b.setAttribute('aria-checked', active ? 'true' : 'false');
     });
-    // Update principal label depending on mode
+    // Principal label adapts per mode (the value is shared; only the label changes)
     const principalLabel = $('principalLabel');
     if (principalLabel) {
       principalLabel.textContent =
@@ -1629,6 +1814,10 @@
       state.currentAge = (els.currentAge.value || '').trim() === '' || ageRaw <= 0
         ? null
         : Math.min(120, ageRaw);
+    }
+    if (els.lifespan) {
+      const lsRaw = parseFloat(els.lifespan.value);
+      state.lifespan = isFinite(lsRaw) ? Math.max(50, Math.min(120, lsRaw)) : 90;
     }
   }
 
@@ -1707,8 +1896,49 @@
   attachNumericInput(els.rate, { thousands: false });
   attachNumericInput(els.goalIncome, { thousands: true });
   attachNumericInput(els.currentAge, { thousands: false });
+  attachNumericInput(els.lifespan, { thousands: false });
   attachNumericInput(els.goalRetireAge, { thousands: false });
   attachNumericInput(els.goalRetireYears, { thousands: false });
+
+  // Family panel — toggle, add, delete, and per-row name/age input handlers.
+  // We use event delegation on the list container so we don't have to
+  // re-bind on every renderFamily() (which rebuilds the inner DOM).
+  if (els.familyToggle && els.familyBody) {
+    els.familyToggle.addEventListener('click', () => {
+      const isOpen = !els.familyBody.hidden;
+      els.familyBody.hidden = isOpen;
+      els.familyToggle.setAttribute('aria-expanded', isOpen ? 'false' : 'true');
+    });
+  }
+  if (els.addFamilyBtn) els.addFamilyBtn.addEventListener('click', addFamilyMember);
+  if (els.familyList) {
+    els.familyList.addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-family-action]');
+      if (!btn) return;
+      const entry = btn.closest('[data-family-index]');
+      if (!entry) return;
+      const i = parseInt(entry.getAttribute('data-family-index'), 10);
+      if (btn.getAttribute('data-family-action') === 'delete') removeFamilyMember(i);
+    });
+    els.familyList.addEventListener('input', (e) => {
+      const fld = e.target.closest('[data-family-field]');
+      if (!fld) return;
+      const entry = fld.closest('[data-family-index]');
+      if (!entry) return;
+      const i = parseInt(entry.getAttribute('data-family-index'), 10);
+      if (!state.family || i < 0 || i >= state.family.length) return;
+      const which = fld.getAttribute('data-family-field');
+      if (which === 'name') {
+        state.family[i].name = fld.value;
+      } else if (which === 'age') {
+        const a = parseFloat(fld.value);
+        state.family[i].age = isFinite(a) && a >= 0 ? Math.min(120, a) : null;
+      }
+      // recalc renders phase cards + axis from state — does NOT rebuild the
+      // family list, so input focus and cursor are preserved while typing.
+      recalc();
+    });
+  }
 
   els.years.addEventListener('input', () => {
     els.yearsOut.textContent = els.years.value;
@@ -1789,6 +2019,12 @@
     p.set('y', String(state.years));
     p.set('f', String(state.freq));
     if (state.currentAge != null) p.set('a', String(state.currentAge));
+    // Lifespan only included when it differs from the default 90 (keeps URLs short).
+    if (state.lifespan != null && state.lifespan !== 90) p.set('ls', String(state.lifespan));
+    if (state.family && state.family.length) {
+      const fam = encodeFamily(state.family);
+      if (fam) p.set('fam', fam);
+    }
     p.set('gi', String(state.goalIncome));
     p.set('gra', String(state.goalRetireAge));
     p.set('gry', String(state.goalRetireYears));
@@ -1863,6 +2099,25 @@
       } else {
         state.currentAge = null;
         if (els.currentAge) els.currentAge.value = '';
+      }
+      // Lifespan (defaults to 90 when missing or out of range)
+      if (params.has('ls')) {
+        const ls = parseFloat(params.get('ls'));
+        if (isFinite(ls) && ls >= 50 && ls <= 120) {
+          state.lifespan = ls;
+          if (els.lifespan) els.lifespan.value = String(ls);
+        }
+      }
+      // Family — decode then re-render the entries
+      if (params.has('fam')) {
+        const fam = decodeFamily(params.get('fam')) || [];
+        state.family = fam;
+        renderFamily();
+        // Open the family panel if there are entries to show
+        if (fam.length && els.familyBody && els.familyToggle && els.familyBody.hidden) {
+          els.familyBody.hidden = false;
+          els.familyToggle.setAttribute('aria-expanded', 'true');
+        }
       }
       const gi = setNum('gi', 1e9);
       if (gi != null) {

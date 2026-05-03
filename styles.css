@@ -1373,6 +1373,130 @@ body[data-mode="goal"]     [data-mode-only="timeline"] { display: none !importan
   color: var(--text);
   font-weight: 600;
 }
+/* Family ages — secondary line below the user-age annotation */
+.phase__family-ages {
+  font-size: 10px;
+  color: var(--muted);
+  letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums;
+  margin: -2px 0 -2px 32px;
+  opacity: 0.85;
+  line-height: 1.45;
+  word-break: break-word;
+}
+
+/* SWR badge — withdraw-phase only, lifespan-aware sustainable withdrawal rate */
+.phase__swr {
+  display: inline-block;
+  margin: 4px 0 -2px 32px;
+  padding: 3px 9px 3px 9px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.phase__swr--safe    { background: rgba(var(--contrib-rgb), 0.18);  color: var(--contrib); }
+.phase__swr--caution { background: rgba(var(--interest-rgb), 0.18); color: var(--interest); }
+.phase__swr--risky   { background: rgba(var(--negative-rgb), 0.18); color: var(--negative); }
+
+/* Family panel — collapsible group of name+age inputs */
+.family-panel {
+  background: var(--card-2);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+}
+.family-panel__toggle {
+  appearance: none;
+  width: 100%;
+  background: transparent;
+  border: 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 14px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+  cursor: pointer;
+  font-family: inherit;
+  text-align: left;
+  min-height: var(--tap);
+}
+.family-panel__toggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+.family-panel__count {
+  color: var(--muted);
+  font-weight: 400;
+  margin-left: 4px;
+  font-size: 12px;
+}
+.family-panel__chevron {
+  color: var(--muted);
+  font-size: 12px;
+  transition: transform 0.2s;
+  display: inline-block;
+}
+.family-panel__toggle[aria-expanded="true"] .family-panel__chevron {
+  transform: rotate(180deg);
+}
+.family-panel__body {
+  padding: 0 14px 14px;
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+}
+.family-list {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.family-list:empty + .add-family { margin-top: 0; }
+.family-entry {
+  display: grid;
+  grid-template-columns: 1fr 90px 36px;
+  gap: 6px;
+  align-items: stretch;
+}
+.family-entry .input-prefix,
+.family-entry .input-suffix {
+  height: 40px;
+  padding: 0 10px;
+  background: var(--card);
+}
+.family-entry .input-prefix input,
+.family-entry .input-suffix input {
+  font-size: 14px;
+  font-weight: 500;
+}
+.family-entry .phase-icon-btn--del {
+  align-self: center;
+  background: var(--card);
+}
+.add-family {
+  font-size: 13px;
+  padding: 10px;
+}
+
+/* Bar axis — when family ages are stacked under the user age, allow growth */
+.tl-bar-axis {
+  height: auto !important;
+  min-height: 14px;
+}
+.tl-bar-axis span {
+  line-height: 1.2;
+  white-space: nowrap;
+}
+.tl-bar-axis .axis-fam {
+  display: block;
+  font-size: 9px;
+  opacity: 0.8;
+  letter-spacing: 0;
+}
 .goal-table th small {
   display: block;
   font-size: 11px;

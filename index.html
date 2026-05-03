@@ -87,120 +87,12 @@
       </button>
     </div>
 
-    <section class="card balance" data-mode-only="simple" aria-live="polite">
-      <p class="balance__label">Final balance</p>
-      <p class="balance__value" id="finalBalance">$0</p>
-      <p class="balance__real" id="realBalance">~$0 <em>in today's purchasing power</em></p>
-      <p class="balance__meta">
-        <span><span class="dot dot--principal"></span> Principal <strong id="metaPrincipal">$0</strong></span>
-        <span><span class="dot dot--contrib"></span> Contributions <strong id="metaContrib">$0</strong></span>
-        <span><span class="dot dot--interest"></span> Interest <strong id="metaInterest">$0</strong></span>
-      </p>
-    </section>
-
-    <section class="card chart-card" data-mode-only="simple">
-      <div class="chart-card__head">
-        <h2>Year-by-year growth</h2>
-        <span class="chart-card__hint" id="chartHint">Tap a bar</span>
-      </div>
-      <div class="chart-wrap">
-        <svg id="chart" class="chart" role="img" aria-label="Year-by-year balance chart"></svg>
-      </div>
-      <ul class="legend">
-        <li><span class="dot dot--principal"></span>Principal</li>
-        <li><span class="dot dot--contrib"></span>Contributions</li>
-        <li><span class="dot dot--interest"></span>Interest</li>
-      </ul>
-    </section>
-
-    <section class="card timeline-summary" data-mode-only="timeline" aria-live="polite">
-      <p class="balance__label">Final balance</p>
-      <p class="balance__value" id="tlFinalBalance">$0</p>
-      <p class="balance__real" id="tlRealBalance">~$0 <em>in today's purchasing power</em></p>
-      <p class="balance__meta">
-        <span><span class="dot dot--principal"></span> Invested <strong id="tlMetaInvested">$0</strong></span>
-        <span><span class="dot dot--interest"></span> Interest <strong id="tlMetaInterest">$0</strong></span>
-        <span><span class="dot dot--withdraw"></span> Withdrawn <strong id="tlMetaWithdrawn">$0</strong></span>
-      </p>
-    </section>
-
-    <section class="card goal-hero" data-mode-only="goal" aria-live="polite">
-      <p class="goal-hero__kicker">Your answer</p>
-      <p class="goal-hero__sentence" id="heroSentence">
-        To retire at age <strong id="heroRetireAge">65</strong> earning
-        <strong id="heroIncome">$5,000</strong>/month, contribute
-        <strong class="goal-hero__big" id="heroContrib">$0</strong>
-        starting today.
-      </p>
-      <div class="goal-hero__grid">
-        <div class="goal-hero__stat">
-          <span class="goal-hero__stat-label">You'll hit your target at</span>
-          <strong class="goal-hero__stat-value" id="heroHitAge">—</strong>
-        </div>
-        <div class="goal-hero__stat">
-          <span class="goal-hero__stat-label" id="heroForeverLabel">Max forever-sustainable monthly</span>
-          <strong class="goal-hero__stat-value" id="heroForever">—</strong>
-          <span class="goal-hero__stat-sub" id="heroForeverSub"></span>
-        </div>
-      </div>
-    </section>
-
-    <section class="card balance" data-mode-only="goal" aria-live="polite">
-      <p class="balance__label">Monthly contribution needed</p>
-      <p class="balance__value" id="goalContribValue">$0</p>
-      <p class="balance__real" id="goalContribHint"><em>to reach your goal by retirement</em></p>
-    </section>
-
-    <section class="card goal-target" data-mode-only="goal">
-      <div class="goal-target__head">
-        <div>
-          <p class="balance__label">Target nest egg</p>
-          <p class="goal-target__value" id="goalNestEggValue">$0</p>
-          <p class="goal-target__real" id="goalNestEggReal">~$0 <em>in today's purchasing power</em></p>
-        </div>
-        <div class="goal-target__income">
-          <p class="balance__label">Monthly income at retirement</p>
-          <p class="goal-target__income-value" id="goalIncomeAtRetire">$0</p>
-          <p class="goal-target__income-note" id="goalIncomeNote"><em>what $0/mo today costs by retirement</em></p>
-        </div>
-      </div>
-    </section>
-
-    <section class="card goal-vis" data-mode-only="goal">
-      <div class="chart-card__head">
-        <h2>Plan timeline</h2>
-        <span class="chart-card__hint" id="goalSpan">0 years</span>
-      </div>
-      <div class="goal-target-marker" id="goalMarker" aria-hidden="true"></div>
-      <div class="tl-bar" id="goalBar" aria-label="Plan timeline"></div>
-      <div class="tl-bar-axis" id="goalBarAxis" aria-hidden="true"></div>
-      <ul class="legend tl-legend">
-        <li><span class="dot dot--contribute"></span>Accumulate</li>
-        <li><span class="dot dot--withdraw"></span>Retirement</li>
-      </ul>
-    </section>
-
-    <section class="card timeline-vis" data-mode-only="timeline">
-      <div class="chart-card__head">
-        <h2>Timeline</h2>
-        <span class="chart-card__hint" id="tlYears">0 years</span>
-      </div>
-      <div class="tl-bar" id="tlBar" aria-label="Phase timeline"></div>
-      <div class="tl-bar-axis" id="tlBarAxis" aria-hidden="true"></div>
-      <ul class="legend tl-legend">
-        <li><span class="dot dot--contribute"></span>Contribute</li>
-        <li><span class="dot dot--coast"></span>Coast</li>
-        <li><span class="dot dot--withdraw"></span>Withdraw</li>
-      </ul>
-      <div class="chart-wrap" style="margin-top:12px;">
-        <svg id="tlChart" class="chart" role="img" aria-label="Balance over time"></svg>
-      </div>
-      <ul class="legend tl-chart-legend">
-        <li><span class="legend-line legend-line--solid"></span>Nominal balance</li>
-        <li><span class="legend-line legend-line--dashed"></span>Real (today's $)</li>
-      </ul>
-    </section>
-
+    <!-- ============================================================
+         INPUTS — always rendered first so the user fills in their
+         info BEFORE seeing results below. Fields use data-mode-only
+         to show/hide per mode while keeping shared values in DOM
+         (and therefore in sync with state) across tab switches.
+         ============================================================ -->
     <section class="card form" aria-label="Calculator inputs">
       <div class="field" data-mode-only="any">
         <label for="principal" id="principalLabel">Initial principal</label>
@@ -265,6 +157,25 @@
         </div>
       </div>
 
+      <div class="field" data-mode-only="any">
+        <label for="lifespan">Expected lifespan</label>
+        <div class="input-suffix">
+          <input id="lifespan" type="text" inputmode="decimal" autocomplete="off" value="90" />
+          <span>yrs</span>
+        </div>
+      </div>
+
+      <div class="family-panel" data-mode-only="any">
+        <button type="button" class="family-panel__toggle" id="familyToggle" aria-expanded="false" aria-controls="familyBody">
+          <span class="family-panel__title">Family <small class="family-panel__count" id="familyCount"></small></span>
+          <span class="family-panel__chevron" aria-hidden="true">▾</span>
+        </button>
+        <div class="family-panel__body" id="familyBody" hidden>
+          <div id="familyList" class="family-list" role="list"></div>
+          <button type="button" class="add-phase add-family" id="addFamily">+ Add family member</button>
+        </div>
+      </div>
+
       <div class="field" data-mode-only="goal">
         <label for="goalIncome">Monthly income needed (today's $)</label>
         <div class="input-prefix">
@@ -291,6 +202,8 @@
       </div>
     </section>
 
+    <!-- Phases card is conceptually input + per-phase summary, so it sits
+         immediately after the shared form in Timeline mode. -->
     <section class="card phases-card" data-mode-only="timeline">
       <div class="chart-card__head">
         <h2>Phases</h2>
@@ -300,29 +213,32 @@
       <button type="button" id="addPhase" class="add-phase">+ Add phase</button>
     </section>
 
-    <section class="card timeline-totals" data-mode-only="timeline">
-      <h2>Summary</h2>
-      <ul class="breakdown__list">
-        <li>
-          <span><span class="dot dot--contribute"></span>Total invested</span>
-          <strong id="tlTotalInvested">$0</strong>
-        </li>
-        <li>
-          <span><span class="dot dot--withdraw"></span>Total withdrawn</span>
-          <strong id="tlTotalWithdrawn">$0</strong>
-        </li>
-        <li>
-          <span><span class="dot dot--interest"></span>Total interest earned</span>
-          <strong id="tlTotalInterest">$0</strong>
-        </li>
-        <li class="breakdown__total">
-          <span>Final balance</span>
-          <strong id="tlTotalBalance">$0</strong>
-        </li>
-        <li class="breakdown__real">
-          <span>In today's purchasing power</span>
-          <strong id="tlTotalReal">~$0</strong>
-        </li>
+    <!-- ============================================================
+         RESULTS — Simple mode
+         ============================================================ -->
+    <section class="card balance" data-mode-only="simple" aria-live="polite">
+      <p class="balance__label">Final balance</p>
+      <p class="balance__value" id="finalBalance">$0</p>
+      <p class="balance__real" id="realBalance">~$0 <em>in today's purchasing power</em></p>
+      <p class="balance__meta">
+        <span><span class="dot dot--principal"></span> Principal <strong id="metaPrincipal">$0</strong></span>
+        <span><span class="dot dot--contrib"></span> Contributions <strong id="metaContrib">$0</strong></span>
+        <span><span class="dot dot--interest"></span> Interest <strong id="metaInterest">$0</strong></span>
+      </p>
+    </section>
+
+    <section class="card chart-card" data-mode-only="simple">
+      <div class="chart-card__head">
+        <h2>Year-by-year growth</h2>
+        <span class="chart-card__hint" id="chartHint">Tap a bar</span>
+      </div>
+      <div class="chart-wrap">
+        <svg id="chart" class="chart" role="img" aria-label="Year-by-year balance chart"></svg>
+      </div>
+      <ul class="legend">
+        <li><span class="dot dot--principal"></span>Principal</li>
+        <li><span class="dot dot--contrib"></span>Contributions</li>
+        <li><span class="dot dot--interest"></span>Interest</li>
       </ul>
     </section>
 
@@ -378,6 +294,65 @@
       </div>
     </section>
 
+    <!-- ============================================================
+         RESULTS — Goal mode
+         ============================================================ -->
+    <section class="card goal-hero" data-mode-only="goal" aria-live="polite">
+      <p class="goal-hero__kicker">Your answer</p>
+      <p class="goal-hero__sentence" id="heroSentence">
+        To retire at age <strong id="heroRetireAge">65</strong> earning
+        <strong id="heroIncome">$5,000</strong>/month, contribute
+        <strong class="goal-hero__big" id="heroContrib">$0</strong>
+        starting today.
+      </p>
+      <div class="goal-hero__grid">
+        <div class="goal-hero__stat">
+          <span class="goal-hero__stat-label">You'll hit your target at</span>
+          <strong class="goal-hero__stat-value" id="heroHitAge">—</strong>
+        </div>
+        <div class="goal-hero__stat">
+          <span class="goal-hero__stat-label" id="heroForeverLabel">Max forever-sustainable monthly</span>
+          <strong class="goal-hero__stat-value" id="heroForever">—</strong>
+          <span class="goal-hero__stat-sub" id="heroForeverSub"></span>
+        </div>
+      </div>
+    </section>
+
+    <section class="card balance" data-mode-only="goal" aria-live="polite">
+      <p class="balance__label">Monthly contribution needed</p>
+      <p class="balance__value" id="goalContribValue">$0</p>
+      <p class="balance__real" id="goalContribHint"><em>to reach your goal by retirement</em></p>
+    </section>
+
+    <section class="card goal-target" data-mode-only="goal">
+      <div class="goal-target__head">
+        <div>
+          <p class="balance__label">Target nest egg</p>
+          <p class="goal-target__value" id="goalNestEggValue">$0</p>
+          <p class="goal-target__real" id="goalNestEggReal">~$0 <em>in today's purchasing power</em></p>
+        </div>
+        <div class="goal-target__income">
+          <p class="balance__label">Monthly income at retirement</p>
+          <p class="goal-target__income-value" id="goalIncomeAtRetire">$0</p>
+          <p class="goal-target__income-note" id="goalIncomeNote"><em>what $0/mo today costs by retirement</em></p>
+        </div>
+      </div>
+    </section>
+
+    <section class="card goal-vis" data-mode-only="goal">
+      <div class="chart-card__head">
+        <h2>Plan timeline</h2>
+        <span class="chart-card__hint" id="goalSpan">0 years</span>
+      </div>
+      <div class="goal-target-marker" id="goalMarker" aria-hidden="true"></div>
+      <div class="tl-bar" id="goalBar" aria-label="Plan timeline"></div>
+      <div class="tl-bar-axis" id="goalBarAxis" aria-hidden="true"></div>
+      <ul class="legend tl-legend">
+        <li><span class="dot dot--contribute"></span>Accumulate</li>
+        <li><span class="dot dot--withdraw"></span>Retirement</li>
+      </ul>
+    </section>
+
     <section class="card comparison" data-mode-only="goal" aria-label="Contribution scenarios">
       <div class="comparison__head">
         <h2>Contribution scenarios</h2>
@@ -424,6 +399,67 @@
         </div>
       </div>
       <div class="goal-whatif__output" id="whatifOutput"></div>
+    </section>
+
+    <!-- ============================================================
+         RESULTS — Timeline mode
+         ============================================================ -->
+    <section class="card timeline-summary" data-mode-only="timeline" aria-live="polite">
+      <p class="balance__label">Final balance</p>
+      <p class="balance__value" id="tlFinalBalance">$0</p>
+      <p class="balance__real" id="tlRealBalance">~$0 <em>in today's purchasing power</em></p>
+      <p class="balance__meta">
+        <span><span class="dot dot--principal"></span> Invested <strong id="tlMetaInvested">$0</strong></span>
+        <span><span class="dot dot--interest"></span> Interest <strong id="tlMetaInterest">$0</strong></span>
+        <span><span class="dot dot--withdraw"></span> Withdrawn <strong id="tlMetaWithdrawn">$0</strong></span>
+      </p>
+    </section>
+
+    <section class="card timeline-vis" data-mode-only="timeline">
+      <div class="chart-card__head">
+        <h2>Timeline</h2>
+        <span class="chart-card__hint" id="tlYears">0 years</span>
+      </div>
+      <div class="tl-bar" id="tlBar" aria-label="Phase timeline"></div>
+      <div class="tl-bar-axis" id="tlBarAxis" aria-hidden="true"></div>
+      <ul class="legend tl-legend">
+        <li><span class="dot dot--contribute"></span>Contribute</li>
+        <li><span class="dot dot--coast"></span>Coast</li>
+        <li><span class="dot dot--withdraw"></span>Withdraw</li>
+      </ul>
+      <div class="chart-wrap" style="margin-top:12px;">
+        <svg id="tlChart" class="chart" role="img" aria-label="Balance over time"></svg>
+      </div>
+      <ul class="legend tl-chart-legend">
+        <li><span class="legend-line legend-line--solid"></span>Nominal balance</li>
+        <li><span class="legend-line legend-line--dashed"></span>Real (today's $)</li>
+      </ul>
+    </section>
+
+    <section class="card timeline-totals" data-mode-only="timeline">
+      <h2>Summary</h2>
+      <ul class="breakdown__list">
+        <li>
+          <span><span class="dot dot--contribute"></span>Total invested</span>
+          <strong id="tlTotalInvested">$0</strong>
+        </li>
+        <li>
+          <span><span class="dot dot--withdraw"></span>Total withdrawn</span>
+          <strong id="tlTotalWithdrawn">$0</strong>
+        </li>
+        <li>
+          <span><span class="dot dot--interest"></span>Total interest earned</span>
+          <strong id="tlTotalInterest">$0</strong>
+        </li>
+        <li class="breakdown__total">
+          <span>Final balance</span>
+          <strong id="tlTotalBalance">$0</strong>
+        </li>
+        <li class="breakdown__real">
+          <span>In today's purchasing power</span>
+          <strong id="tlTotalReal">~$0</strong>
+        </li>
+      </ul>
     </section>
 
     <footer class="app__footer">
